@@ -196,6 +196,13 @@ desligado e root de fábrica (`SuperUser`). O que se aprendeu:
 - A Netflix nunca funciona nesses aparelhos (não são certificados: erro -1001). Não há como contornar sem burlar o
   DRM, e isso não se faz.
 - O chip esquenta: com 6 câmeras ao vivo chega a 90-99 °C. O cartão de sistema mostra a temperatura.
+- **Botões do controle:** o `com.master.accessibility` (o mouse) apaga qualquer serviço de acessibilidade em ~1 s
+  (o `dumpsys settings` mostra `pkg:com.master.accessibility value:{null}`), então o `RemoteKeyService` não fica de
+  pé. O receptor infravermelho (`ir_keypad`, `/dev/input/event0`) é legível por qualquer app nesse aparelho: o
+  `RawKeys` (serviço em primeiro plano no `:keys`, só no modo Free My TV) lê os eventos de 16 bytes direto dele.
+  Não segura a tecla: o projetor ainda faz o que já fazia (Espelhamento F10 abre o Miracast). O Menu não tem
+  conflito. Mouse = `MOUSE` (305), Tela = F11. O `getevent` pelo ADB guarda a saída em lote: não serve para ler ao
+  vivo.
 
 ### TCL com Android TV 9 (Realtek, "UnionTV", 1,4 GB)
 
@@ -215,6 +222,12 @@ desligado e root de fábrica (`SuperUser`). O que se aprendeu:
   vídeo (o codificador): feche-o antes de assistir vídeos nessas TVs.
 - A C06 (940 MB) travou com 4 câmeras, a janela flutuante e o YouTube juntos: memória no limite. Nela, menos câmeras
   na tela inicial (ou "Desativar") e o botão de câmeras.
+- **Controles inteiros** (`Remotes`): na C06 e no projetor, todos os botões menos os essenciais (ligar, OK, setas,
+  voltar, início, volume, mudo) entram em Botões do Controle, com um desenho do controle que acende o botão da linha.
+  Códigos da C06: Marcador 4090, Google 4048, Configurações 4077, TV ao vivo 4001, Entrada TV_INPUT, Menu, P+/P−
+  (CHANNEL_UP/DOWN), Camadas 4139, cores 4056, Apps 4137. O registro da C06 é pequeno e se perde em minutos: leia as
+  teclas ao vivo (`logcat -s TclPhoneWindowManager:D`). Os botões de app que o Free My TV já segura não aparecem ali,
+  só no log dele ("remote key").
 
 ## O código
 

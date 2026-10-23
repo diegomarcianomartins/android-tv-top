@@ -272,6 +272,10 @@ final class HomeMode {
 
     /** Adds ours to the enabled accessibility services (keeping the others, like TalkBack), or takes it out. */
     private static void remoteService(Context c, Adb adb, boolean on) throws IOException {
+        if (Remotes.CURRENT != null && !Remotes.CURRENT.rawDevice.isEmpty()) {
+            RawKeys.set(c, on);   // lido direto do receptor: sem serviço de acessibilidade
+            return;
+        }
         String current = adb.shell("settings get secure enabled_accessibility_services").trim();
         if (current.equals("null")) current = "";
         List<String> others = new ArrayList<>();

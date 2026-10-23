@@ -115,6 +115,13 @@
             android:theme="@style/FreeMyTV.Home" />
 
         <!-- One DVR camera in a small window over everything (hold OK on a camera of the home screen). -->
+        <!-- Os botões do controle lidos direto do receptor (projetor Amlogic: o app do mouse apaga os serviços de
+             acessibilidade). -->
+        <service
+            android:name=".RawKeys"
+            android:process=":keys"
+            android:exported="false" />
+
         <service
             android:name=".CameraPopup"
             android:process=":home"

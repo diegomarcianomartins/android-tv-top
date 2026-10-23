@@ -35,7 +35,7 @@ final class RemoteKeys {
     static final boolean STEM_NETFLIX = VESTEL || FORMOVIE;
 
     static boolean supported() {
-        return TCL || STEM_NETFLIX || KTC || SONY;
+        return TCL || STEM_NETFLIX || KTC || SONY || Remotes.CURRENT != null;   // o projetor Amlogic entra pelo Remotes
     }
 
     private static boolean is(String maker) {
@@ -61,16 +61,21 @@ final class RemoteKeys {
         if (!ours) return false;
         String pkg = Prefs.keyApp(keyCode);
         if (pkg.isEmpty()) return false;   // "Nothing": the key goes on as if we weren't here
-        if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0 && pkg.equals(Prefs.CAMERAS)) {
-            AppLog.w("remote key " + e.getKeyCode() + " -> cameras");
+        if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) run(c, e.getKeyCode(), pkg);
+        return true;
+    }
+
+    /** Faz o que o botão `key` foi configurado para fazer: abrir o app `pkg` ou as câmeras. */
+    static void run(Context c, int key, String pkg) {
+        if (pkg.equals(Prefs.CAMERAS)) {
+            AppLog.w("remote key " + key + " -> cameras");
             c.startActivity(new Intent(c, CameraActivity.class).setAction(CameraActivity.ACTION_KEY)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-        } else if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
-            Intent intent = launchIntent(c.getPackageManager(), pkg);
-            AppLog.w("remote key " + e.getKeyCode() + " -> " + pkg + (intent == null ? " (not installed)" : ""));
-            if (intent != null) c.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            return;
         }
-        return true;
+        Intent intent = launchIntent(c.getPackageManager(), pkg);
+        AppLog.w("remote key " + key + " -> " + pkg + (intent == null ? " (not installed)" : ""));
+        if (intent != null) c.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
     }
 
     /** The app's TV launcher, or its plain one (kept here, not in HomeApps, so the key process stays small). */
