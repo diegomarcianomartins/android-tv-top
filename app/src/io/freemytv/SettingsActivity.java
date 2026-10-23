@@ -45,7 +45,7 @@ import java.util.Set;
  */
 public class SettingsActivity extends Activity {
     private SettingsView view;
-    private DreamView preview;   // "Screensaver": the screensaver right here, without changing the system setting
+    private View preview;   // "Screensaver": the screensaver right here, without changing the system setting
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -99,14 +99,14 @@ public class SettingsActivity extends Activity {
     }
 
     void showPreview() {
-        preview = new DreamView(this);
+        preview = CameraDream.create(this);
         setContentView(preview);
-        preview.start();
+        ((DreamContent) preview).start();
     }
 
     private void closePreview() {
         if (preview == null) return;
-        preview.stop();
+        ((DreamContent) preview).stop();
         preview = null;
         setContentView(view);
         view.resume();
@@ -394,7 +394,7 @@ public class SettingsActivity extends Activity {
             String[] labels = {Ui.tr("Home Screen"), Ui.tr("Screensaver"),
                     Ui.tr("Home Settings"), Ui.tr("Shelf"), Ui.tr("Top Buttons"),
                     Ui.tr("Remote Buttons"), Ui.tr("TV Settings")};
-            String[] values = {working ? "" : mode, Ui.tr("Preview"), "", "", "", "", ""};
+            String[] values = {working ? "" : mode, saverName(), "", "", "", "", ""};
             for (int i = 0; i < labels.length; i++) {
                 float y = (MAIN_TOP + i * (ROW_H + MAIN_GAP)) * k;
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + ROW_H * k);
@@ -603,6 +603,13 @@ public class SettingsActivity extends Activity {
                     if (down && screen == SHELF_EDIT) {
                         moveShelfApp(e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
                         invalidate();
+                    } else if (down && screen == MAIN && focus == 1) {
+                        // Tela de Descanso: ← → escolhem qual (o OK mostra a prévia).
+                        int at = java.util.Arrays.asList(SAVERS).indexOf(Prefs.screensaver());
+                        int dir = e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1;
+                        Prefs.setScreensaver(SAVERS[(at + dir + SAVERS.length) % SAVERS.length]);
+                        ModeJob.schedule(getContext(), ModeJob.SAVER, null, 0);
+                        invalidate();
                     } else if (down && (screen == HOME_SETTINGS || screen == REMOTE_KEYS)) {
                         adjust(e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
                         invalidate();
@@ -649,6 +656,12 @@ public class SettingsActivity extends Activity {
         // MARK: - Home Settings and Remote Buttons
 
         private static final String[] UNITS = {"auto", "C", "F"}, THEMES = {"auto", "light", "dark"};
+        private static final String[] SAVERS = {Prefs.SAVER_FREE, Prefs.SAVER_CAMERAS, Prefs.SAVER_OFF};
+
+        private static String saverName() {
+            String v = Prefs.screensaver();
+            return v.equals(Prefs.SAVER_CAMERAS) ? Ui.tr("Cameras") : v.equals(Prefs.SAVER_OFF) ? Ui.tr("Off") : "Free My TV";
+        }
         /** Home Settings: language, temperature, theme, sounds, weather, city, quotes, then one row per coin. */
         private static final int CITY_ROW = 5, COIN_ROWS = 7;
 

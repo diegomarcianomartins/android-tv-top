@@ -167,6 +167,34 @@ final class Prefs {
         put("topButtons", sb.toString());
     }
 
+    // MARK: - Tela de descanso
+
+    /** A tela de descanso: a do Free My TV, as câmeras (CameraDream) ou nenhuma (desligada no sistema, HomeMode). */
+    static final String SAVER_FREE = "free", SAVER_CAMERAS = "cameras", SAVER_OFF = "off";
+
+    // Num arquivo, como os botões do controle: no Android 11 a tela de descanso roda no processo principal, que não
+    // vê o que o :home grava nas SharedPreferences.
+    private static File saverFile() {
+        return new File(app.getFilesDir(), "screensaver.txt");
+    }
+
+    static String screensaver() {
+        try (BufferedReader r = new BufferedReader(new FileReader(saverFile()))) {
+            String v = r.readLine();
+            if (SAVER_CAMERAS.equals(v) || SAVER_OFF.equals(v)) return v;
+        } catch (IOException ignored) {
+        }
+        return SAVER_FREE;
+    }
+
+    static void setScreensaver(String v) {
+        try (FileOutputStream out = new FileOutputStream(saverFile())) {
+            out.write(v.getBytes(StandardCharsets.UTF_8));
+            version++;
+        } catch (IOException ignored) {
+        }
+    }
+
     // MARK: - Remote buttons
 
     private static String defaultApp(int keyCode) {

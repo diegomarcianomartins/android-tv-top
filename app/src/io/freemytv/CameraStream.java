@@ -41,6 +41,9 @@ final class CameraStream implements Runnable {
 
         /** Pictures are coming (true), or the camera stopped sending them (false). On the camera's thread. */
         void onLive(boolean live);
+
+        /** Nenhum stream da câmera deu imagem: ela só tenta de novo em 5 minutos. Na thread da câmera. */
+        default void onGaveUp() {}
     }
 
     private static final long RETRY_MS = 5000, DEAD_RETRY_MS = 5 * 60_000, GOOD_MS = 60_000;
@@ -172,6 +175,7 @@ final class CameraStream implements Runnable {
             if (!good) {
                 which = 0;
                 AppLog.w(label + ": no picture, trying again in 5 minutes");
+                listener.onGaveUp();
             }
             // Na próxima tentativa, o hardware de novo: o que ocupava os decodificadores (as câmeras da tela inicial)
             // pode ter parado.

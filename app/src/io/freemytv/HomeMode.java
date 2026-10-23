@@ -421,6 +421,7 @@ final class HomeMode {
                     AppLog.w("remote buttons service: " + e.getMessage());
                 }
             }
+            if (Prefs.SAVER_OFF.equals(Prefs.screensaver())) applySaver(c, adb);
             notice(c, Ui.trf("Free My TV is on: new home screen and screensaver, {n} apps turned off.", "n", disabled.size()));
             busy(c, Ui.tr("Measuring Free My TV…"));
             measureHomeTime(c, adb, FREE);
@@ -791,6 +792,40 @@ final class HomeMode {
         String saver = safeComponents(s.optString("originalScreensaver", ""));
         if (saver.isEmpty()) adb.shell("settings delete secure screensaver_components");
         else adb.shell("settings put secure screensaver_components '" + saver + "'");
+        // Tela de descanso desligada no Free My TV: volta como era.
+        String enabled = s.optString("saverEnabled", "");
+        if (enabled.matches("[01]")) adb.shell("settings put secure screensaver_enabled " + enabled);
+        s.remove("saverEnabled");
+    }
+
+    /**
+     * Tela de Descanso → Desligada: o sistema não abre tela de descanso nenhuma (screensaver_enabled = 0, só pelo ADB
+     * da TV). O valor de antes fica guardado, e as outras escolhas ou o Original o devolvem.
+     */
+    static void applySaverNow(Context app) {
+        if (!FREE.equals(state(app).optString("mode"))) return;
+        try (Adb adb = Adb.connect(app, 10_000, null)) {
+            applySaver(app, adb);
+        } catch (IOException e) {
+            AppLog.w("screensaver: " + e.getMessage());
+        }
+    }
+
+    private static void applySaver(Context c, Adb adb) throws IOException {
+        JSONObject s = state(c);
+        boolean off = Prefs.SAVER_OFF.equals(Prefs.screensaver());
+        String now = adb.shell("settings get secure screensaver_enabled").trim();
+        if (off && !s.has("saverEnabled")) {
+            try { s.put("saverEnabled", now.matches("[01]") ? now : "1"); } catch (JSONException ignored) {}
+            save(c, s);
+        }
+        String want = off ? "0" : s.optString("saverEnabled", now.matches("[01]") ? now : "1");
+        if (!want.equals(now)) adb.shell("settings put secure screensaver_enabled " + want);
+        if (!off && s.has("saverEnabled")) {
+            s.remove("saverEnabled");
+            save(c, s);
+        }
+        AppLog.w("screensaver " + (off ? "off" : "on"));
     }
 
     /** The system's default screensaver ("package/service"), or "". */

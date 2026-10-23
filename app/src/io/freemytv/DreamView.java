@@ -39,7 +39,8 @@ import java.util.concurrent.Executors;
  * Dark scrims only where there is text, stronger where the photo is bright. Any key exits (as on Apple TV).
  * Without photos (no TMDB key, or before the first fetch): the big clock over the night aurora.
  */
-final class DreamView extends View implements Choreographer.FrameCallback, HomeData.Listener, Recs.Listener {
+final class DreamView extends View implements Choreographer.FrameCallback, HomeData.Listener, Recs.Listener,
+        DreamContent {
     private static final long SHOW_MS = 30_000, FADE_MS = 3_000, FIRST_MS = 1_600;
     private static final float ZOOM = 0.1f;
     /** Photos 10% larger than the screen (the zoom goes up to 1.1 without upscaling). */
@@ -161,7 +162,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         shadowPaint.setColor(0xFF000000);
     }
 
-    void start() {
+    @Override public void start() {
         if (running) return;
         running = true;
         if (worker.isShutdown()) worker = Executors.newSingleThreadExecutor();
@@ -180,7 +181,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         invalidate();
     }
 
-    void stop() {
+    @Override public void stop() {
         if (!running) return;
         running = false;
         generation++;

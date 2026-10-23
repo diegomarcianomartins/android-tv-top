@@ -2272,7 +2272,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             r = topRects[topIndex];
         } else if (zone == Z_CAMS) {
             click.open();
-            CameraActivity.open(getContext(), camIndex);
+            CameraActivity.open(getContext(), cameras.cameraAt(camIndex));
             return;
         } else if (zone == Z_CAMGRID) {
             if (camChoice == cameras.choice()) return;
@@ -2321,7 +2321,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             holdArmed = false;
             okHeld = true;
             click.move();
-            CameraPopup.press(getContext(), camIndex);
+            CameraPopup.press(getContext(), cameras.cameraAt(camIndex));
             return;
         }
         if (sheetOpen) toggleShelf(); else startReorder();

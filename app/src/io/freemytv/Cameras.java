@@ -18,14 +18,21 @@ import java.util.List;
 /**
  * The live cameras of a DVR (Config.DVR_CAMERAS, up to 6) on the home screen: a grid of rounded tiles (2×2 for up to
  * 4, 3×2 for 5 or 6), each one a CameraStream drawn on a TextureView. A choice above the grid shows 4 or 6 of them
- * (with more than 4), in their order, or turns them all off (no video work at all; the choice stays to turn them on). They play only while the home screen shows (HomeView
+ * (with more than 4), in their order, or turns them all off (no video work at all; the choice stays to turn them
+ * on). They play only while the home screen shows (HomeView
  * resume/pause). The remote focuses a camera or the choice (HomeView's camera zones); OK on a camera opens it full
  * screen (CameraActivity).
+ * SLIDE: uma câmera só, no espaço do mosaico inteiro, trocando a cada 10 s (um decodificador só, o que alivia as TVs
+ * de 1 GB). Os 10 s contam de quando a imagem aparece. Uma câmera que desistiu (nenhum stream deu imagem) é pulada
+ * na hora; uma que demora, depois de 12 s.
  */
 final class Cameras extends ViewGroup {
     static final int MAX = 6;
     /** Right after the TV starts, the cameras wait: on a 1 GB projector the boot already takes all four cores. */
     private static final long AFTER_BOOT_MS = 150_000;
+    /** A escolha SLIDE (guardada no lugar do número de câmeras), e quanto tempo cada câmera fica nela. */
+    static final int SLIDE = -1;
+    private static final long SLIDE_MS = 10_000, SLIDE_WAIT_MS = 12_000;
 
     private final List<String> urls = urls();
     /** How many cameras each choice shows: {4, 6, 0} with more than 4, else {all, 0}; 0 is "Turn off". */
@@ -42,6 +49,8 @@ final class Cameras extends ViewGroup {
     private float radius, gap, pad, band;     // pad: room for the focused tile to grow; band: the choice's row
     private boolean on;
     private int shown, cols, focused = -1, pillFocused = -1;
+    private boolean slide, slideLive;   // slideLive: a câmera do slide já mostrou imagem
+    private int slideAt;                // a câmera do slide agora
 
     /** The cameras in config.properties: rtsp:// addresses, comma separated. */
     static List<String> urls() {
@@ -64,7 +73,8 @@ final class Cameras extends ViewGroup {
         pillText.setTextAlign(Paint.Align.CENTER);
         views = new TextureView[urls.size()];
         streams = new CameraStream[urls.size()];
-        grids = urls.size() > 4 ? new int[] {4, 6, 0} : new int[] {urls.size(), 0};
+        grids = urls.size() > 4 ? new int[] {4, 6, SLIDE, 0}
+                : urls.size() > 1 ? new int[] {urls.size(), SLIDE, 0} : new int[] {urls.size(), 0};
         pills = new RectF[grids.length];
         for (int i = 0; i < pills.length; i++) pills[i] = new RectF();
         pillLabels = new String[grids.length];
@@ -93,6 +103,15 @@ final class Cameras extends ViewGroup {
     /** How many cameras are on screen now. */
     int count() {
         return shown;
+    }
+
+    /** A câmera no lugar `slot` do mosaico (no SLIDE, o único lugar mostra a câmera da vez). */
+    int cameraAt(int slot) {
+        return slide ? slideAt : slot;
+    }
+
+    private boolean isShown(int i) {
+        return slide ? i == slideAt : i < shown;
     }
 
     int columns() {
@@ -124,10 +143,14 @@ final class Cameras extends ViewGroup {
     }
 
     private void applyGrid() {
-        shown = Math.min(views.length, grids[choice()]);
+        slide = grids[choice()] == SLIDE;
+        shown = slide ? 1 : Math.min(views.length, grids[choice()]);
         cols = shown <= 1 ? 1 : shown <= 4 ? 2 : 3;
+        removeCallbacks(nextSlide);
+        removeCallbacks(slideTimeout);
+        if (slide) scheduleSlide();
         for (int i = 0; i < views.length; i++) {
-            if (i < shown) {
+            if (isShown(i)) {
                 if (views[i].getVisibility() == GONE) views[i].setVisibility(VISIBLE);
                 startOne(i);
             } else {
@@ -139,7 +162,8 @@ final class Cameras extends ViewGroup {
     }
 
     /** Center of camera `i`, in the parent's coordinates (for moving the focus to the nearest one). */
-    float centerX(int i) {
+    float centerX(int slot) {
+        int i = cameraAt(slot);
         return getLeft() + (views[i].getLeft() + views[i].getRight()) / 2f;
     }
 
@@ -156,8 +180,9 @@ final class Cameras extends ViewGroup {
         }
         if (camera == focused) return;
         focused = camera;
+        int view = camera < 0 ? -1 : cameraAt(camera);
         for (int i = 0; i < views.length; i++) {
-            float s = i == camera ? 1.06f : 1f;
+            float s = i == view ? 1.06f : 1f;
             views[i].animate().scaleX(s).scaleY(s).setDuration(160).setUpdateListener(a -> invalidate()).start();
         }
         invalidate();
@@ -172,13 +197,46 @@ final class Cameras extends ViewGroup {
             return;
         }
         on = true;
-        for (int i = 0; i < shown; i++) startOne(i);
+        for (int i = 0; i < views.length; i++) if (isShown(i)) startOne(i);
+        if (slide) scheduleSlide();
+    }
+
+    // MARK: - SLIDE
+
+    private final Runnable nextSlide = () -> advanceSlide();
+    /** A câmera da vez ainda sem imagem depois de SLIDE_WAIT_MS: a próxima. */
+    private final Runnable slideTimeout = () -> {
+        if (!slideLive) advanceSlide();
+    };
+
+    private void scheduleSlide() {
+        removeCallbacks(nextSlide);
+        removeCallbacks(slideTimeout);
+        if (!on) return;
+        postDelayed(slideTimeout, SLIDE_WAIT_MS);   // e o nextSlide quando a imagem aparecer
+    }
+
+    private void advanceSlide() {
+        if (!slide || views.length == 0) return;
+        int old = slideAt;
+        if (streams[old] != null) streams[old].stop(false);
+        streams[old] = null;
+        views[old].setVisibility(GONE);
+        slideAt = (old + 1) % views.length;
+        slideLive = false;
+        views[slideAt].setVisibility(VISIBLE);
+        requestLayout();
+        invalidate();
+        startOne(slideAt);    // sem textura ainda, o Tile começa quando ela existir
+        scheduleSlide();
     }
 
     private final Runnable startLater = this::start;
 
     void stop() {
         removeCallbacks(startLater);
+        removeCallbacks(nextSlide);
+        removeCallbacks(slideTimeout);
         on = false;
         for (int i = 0; i < streams.length; i++) {
             if (streams[i] != null) streams[i].stop(false);
@@ -188,7 +246,7 @@ final class Cameras extends ViewGroup {
 
     private void startOne(int i) {
         SurfaceTexture t = views[i].getSurfaceTexture();
-        if (!on || i >= shown || t == null || streams[i] != null) return;
+        if (!on || !isShown(i) || t == null || streams[i] != null) return;
         TextureView v = views[i];
         streams[i] = new CameraStream(urls.get(i), i, t, new CameraStream.Listener() {
             @Override public void onVideoSize(int w, int h) { v.post(() -> crop(v, w, h)); }
@@ -197,7 +255,20 @@ final class Cameras extends ViewGroup {
             // a TextureView makes its texture when it's first drawn.)
             @Override public void onLive(boolean live) {
                 v.post(() -> {
-                    if (i < shown) v.setVisibility(live ? VISIBLE : INVISIBLE);
+                    if (!isShown(i)) return;
+                    v.setVisibility(live ? VISIBLE : INVISIBLE);
+                    if (live && slide && i == slideAt && !slideLive) {
+                        slideLive = true;
+                        removeCallbacks(slideTimeout);
+                        postDelayed(nextSlide, SLIDE_MS);
+                    }
+                });
+            }
+
+            // No SLIDE, uma câmera que não conseguiu imagem dá a vez na hora.
+            @Override public void onGaveUp() {
+                v.post(() -> {
+                    if (slide && i == slideAt && !slideLive) advanceSlide();
                 });
             }
         });
@@ -253,8 +324,8 @@ final class Cameras extends ViewGroup {
         if (hasChoice()) {
             float h = 52 * k, x = pad + 6 * k, top = pad / 2 + 6 * k;
             for (int i = 0; i < grids.length; i++) {
-                pillLabels[i] = grids[i] == 0 ? Ui.tr("cameras|Turn off")
-                        : Ui.plural("plural|one:{n} camera|other:{n} cameras", grids[i]);
+                pillLabels[i] = grids[i] == 0 ? Ui.tr("cameras|OFF") : grids[i] == SLIDE ? Ui.tr("cameras|SLIDE")
+                        : Ui.trf("cameras|{n} CAM", "n", grids[i]);
                 float w = pillText.measureText(pillLabels[i]) + 52 * k;
                 pills[i].set(x, top, x + w, top + h);
                 x += w + 6 * k;
@@ -268,8 +339,9 @@ final class Cameras extends ViewGroup {
         int c = Math.max(1, cols);
         for (int i = 0; i < views.length; i++) {
             TextureView v = views[i];
-            int x = Math.round(pad + (i % c) * (v.getMeasuredWidth() + gap));
-            int y = Math.round(band + pad + (i / c) * (v.getMeasuredHeight() + gap));
+            int at = slide ? 0 : i;   // no SLIDE, a câmera da vez fica no único lugar
+            int x = Math.round(pad + (at % c) * (v.getMeasuredWidth() + gap));
+            int y = Math.round(band + pad + (at / c) * (v.getMeasuredHeight() + gap));
             v.layout(x, y, x + v.getMeasuredWidth(), y + v.getMeasuredHeight());
             v.invalidateOutline();
         }
@@ -277,7 +349,8 @@ final class Cameras extends ViewGroup {
 
     /** Dark tiles under the pictures (what shows while a camera connects, or when it's offline), and the choice. */
     @Override protected void onDraw(Canvas c) {
-        for (int i = 0; i < shown; i++) {
+        for (int i = 0; i < views.length; i++) {
+            if (!isShown(i)) continue;
             TextureView v = views[i];
             float s = v.getScaleX(), cx = (v.getLeft() + v.getRight()) / 2f, cy = (v.getTop() + v.getBottom()) / 2f;
             float hw = v.getWidth() * s / 2, hh = v.getHeight() * s / 2;
@@ -304,7 +377,7 @@ final class Cameras extends ViewGroup {
     @Override protected void dispatchDraw(Canvas c) {
         super.dispatchDraw(c);
         if (focused < 0 || focused >= shown) return;
-        TextureView v = views[focused];
+        TextureView v = views[cameraAt(focused)];
         float s = v.getScaleX(), cx = (v.getLeft() + v.getRight()) / 2f, cy = (v.getTop() + v.getBottom()) / 2f;
         float hw = v.getWidth() * s / 2, hh = v.getHeight() * s / 2, inset = ring.getStrokeWidth() / 2;
         ring.setAlpha(Math.round(255 * Math.min(1, (s - 1) / 0.06f)));

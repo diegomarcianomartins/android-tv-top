@@ -1,6 +1,7 @@
 package io.freemytv;
 
 import android.service.dreams.DreamService;
+import android.view.View;
 
 /**
  * The Free My TV screensaver (enabled in Free My TV mode via `settings put secure screensaver_components`). The system
@@ -8,7 +9,7 @@ import android.service.dreams.DreamService;
  * doesn't change those timings. Any key exits.
  */
 public class Screensaver extends DreamService {
-    private DreamView view;
+    private View view;   // DreamView ou CameraDream (a escolha em Tela de Descanso)
 
     @Override public void onAttachedToWindow() {
         super.onAttachedToWindow();
@@ -17,22 +18,22 @@ public class Screensaver extends DreamService {
         setInteractive(false);
         setFullscreen(true);
         setScreenBright(true);
-        view = new DreamView(this);
+        view = CameraDream.create(this);
         setContentView(view);
     }
 
     @Override public void onDreamingStarted() {
         super.onDreamingStarted();
-        if (view != null) view.start();
+        if (view != null) ((DreamContent) view).start();
     }
 
     @Override public void onDreamingStopped() {
-        if (view != null) view.stop();
+        if (view != null) ((DreamContent) view).stop();
         super.onDreamingStopped();
     }
 
     @Override public void onDetachedFromWindow() {
-        if (view != null) view.stop();
+        if (view != null) ((DreamContent) view).stop();
         super.onDetachedFromWindow();
     }
 }

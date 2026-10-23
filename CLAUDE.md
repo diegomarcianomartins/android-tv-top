@@ -264,6 +264,13 @@ desligado e root de fábrica (`SuperUser`). O que se aprendeu:
   controle; OK abre `CameraActivity` em tela cheia, no stream principal, com ←/→ para trocar. Uma câmera que não
   responde vira um quadro escuro e só é tentada de novo em 5 minutos; um substream que não responde cai para o stream
   principal. As câmeras esperam 150 s desde o boot para começar.
+  Em cima do mosaico: 4 CAM, 6 CAM, SLIDE e DESLIGADO. O SLIDE mostra uma câmera por vez no espaço todo (um
+  decodificador só), 10 s contados de quando a imagem aparece; pula na hora a câmera que desistiu (`onGaveUp`: nenhum
+  stream deu imagem) e depois de 12 s a que demora.
+  Tela de Descanso (no menu principal, ← →): Free My TV, Câmeras (`CameraDream`: o mesmo SLIDE em tela cheia, no
+  stream principal) ou Desligada (`screensaver_enabled = 0` pelo ADB da TV; o valor de antes fica no estado e volta
+  com as outras escolhas ou com o Original). A escolha fica em `screensaver.txt`: no Android 11 a tela de descanso
+  roda no processo principal, que não vê as SharedPreferences do `:home`.
   Um botão do controle (Botões do Controle → Câmeras; na TCL, Globoplay = 4097 e Disney+ = 4141 também entram na
   lista) abre a primeira câmera em tela cheia de qualquer lugar. Apertado de novo, a câmera da tela vai para a janela
   flutuante e volta o app de antes: a `CameraActivity` é `singleTask` numa tarefa própria, e o segundo aperto chega
