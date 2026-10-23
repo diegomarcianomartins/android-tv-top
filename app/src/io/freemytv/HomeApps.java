@@ -516,12 +516,38 @@ final class HomeApps {
             if ((ri.activityInfo.applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0 || !seen.add(pkg)) continue;
             out.add(new String[] {pkg, String.valueOf(ri.loadLabel(pm))});
         }
+        for (String[] u : UNLISTED) {
+            if (unlistedIntent(pm, u[0]) != null && seen.add(u[0])) out.add(new String[] {u[0], Ui.tr("Projection")});
+        }
         return out;
+    }
+
+    /**
+     * Projector settings with no launcher entry, which only the stock home screen opened: package, activity.
+     * Amlogic projectors (HTC/JM launcher): keystone and projection.
+     */
+    private static final String[][] UNLISTED = {
+        {"com.softwinner.tcorrection", "com.softwinner.tcorrection.projection.ProjectionSettingActivity"},
+    };
+
+    private static Intent unlistedIntent(PackageManager pm, String pkg) {
+        for (String[] u : UNLISTED) {
+            if (!u[0].equals(pkg)) continue;
+            Intent intent = new Intent(Intent.ACTION_MAIN).setClassName(u[0], u[1]).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try {
+                ActivityInfo ai = pm.getActivityInfo(intent.getComponent(), 0);
+                return ai.exported && ai.enabled && ai.applicationInfo.enabled ? intent : null;
+            } catch (PackageManager.NameNotFoundException e) {
+                return null;
+            }
+        }
+        return null;
     }
 
     static Intent launchIntent(PackageManager pm, String pkg) {
         Intent intent = pm.getLeanbackLaunchIntentForPackage(pkg);
-        return intent != null ? intent : pm.getLaunchIntentForPackage(pkg);
+        if (intent == null) intent = pm.getLaunchIntentForPackage(pkg);
+        return intent != null ? intent : unlistedIntent(pm, pkg);
     }
 
     // MARK: - Colored logos (shelf)
