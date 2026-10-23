@@ -182,6 +182,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // Moving apps on the shelf (as on Apple TV): hold OK on a tile, then ← → move it, OK drops it, Back cancels. The
     // lifted tile wiggles; the others slide to their new places (each slot's x offset is a spring that returns to 0).
     private static final long HOLD_MS = 500, WIGGLE_MS = 300;
+    /** Holding OK on a camera: its popup (a little longer than a shelf app's move mode, so OK alone stays quick). */
+    private static final long CAMERA_HOLD_MS = 900;
     private static final float LIFT_GROW = 0.08f, WIGGLE_DEG = 1.5f;
     private boolean reordering, reorderAnim, okHeld, holdArmed;
     private int liftIndex = -1;
@@ -2073,9 +2075,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                         okDown = true;
                         okHeld = false;
                         handler.removeCallbacks(holdStart);
-                        holdArmed = sheetOpen ? canToggleShelf(gridIndex) : canReorder();
-                        if (holdArmed) handler.postDelayed(holdStart, HOLD_MS);
-                    } else if (okDown && holdArmed && e.isLongPress()) {
+                        boolean camera = !sheetOpen && zone == Z_CAMS;
+                        holdArmed = sheetOpen ? canToggleShelf(gridIndex) : camera || canReorder();
+                        if (holdArmed) handler.postDelayed(holdStart, camera ? CAMERA_HOLD_MS : HOLD_MS);
+                    } else if (okDown && holdArmed && e.isLongPress() && !(zone == Z_CAMS && !sheetOpen)) {
                         hold();
                     }
                 } else {
@@ -2309,6 +2312,15 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // MARK: - Holding OK: All Apps puts the app on the shelf or takes it off; on the shelf, the app is lifted to move
 
     private void hold() {
+        if (!sheetOpen && zone == Z_CAMS) {
+            // The camera in the popup over everything: a new one, the next corner, or another camera in it.
+            handler.removeCallbacks(holdStart);
+            holdArmed = false;
+            okHeld = true;
+            click.move();
+            CameraPopup.press(getContext(), camIndex);
+            return;
+        }
         if (sheetOpen) toggleShelf(); else startReorder();
     }
 

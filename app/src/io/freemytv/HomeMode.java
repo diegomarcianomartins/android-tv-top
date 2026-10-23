@@ -241,6 +241,16 @@ final class HomeMode {
         }
     }
 
+    /** The camera popup (CameraPopup) draws over other apps: a permission only Settings or ADB can give. */
+    static void allowOverlayNow(Context app) {
+        try (Adb adb = Adb.connect(app, 10_000, null)) {
+            adb.shell("appops set " + PKG + " SYSTEM_ALERT_WINDOW allow");
+            AppLog.w("allowed to draw over other apps (camera popup)");
+        } catch (IOException e) {
+            AppLog.w("camera popup permission: " + e.getMessage());
+        }
+    }
+
     static void ensureRemoteServiceNow(Context app) {
         if (!RemoteKeys.supported() || !FREE.equals(state(app).optString("mode"))) return;
         try (Adb adb = Adb.connect(app, 10_000, null)) {
