@@ -5,6 +5,7 @@ import android.content.Context;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.os.StatFs;
 import android.text.format.Formatter;
 
@@ -16,7 +17,7 @@ import java.io.IOException;
 /**
  * Memory, processor and storage for the home screen's system card, measured every 3 s on a background thread while
  * the home screen shows. The processor's use comes from /proc/stat, which Android 8+ hides from apps on most TVs
- * (SELinux): then only its temperature shows, when the TV lets apps read it. Values are -1 when unknown.
+ * (SELinux): then it is read through the TV's own ADB, in Free My TV mode. Values are -1 when unknown.
  */
 final class SystemStats {
     private static final long EVERY_MS = 3000;
@@ -27,6 +28,8 @@ final class SystemStats {
     private Thread thread;
     private volatile boolean running;
     private long lastIdle = -1, lastTotal = -1;
+    private Adb adb;                // stats thread only
+    private long adbRetryAt;
 
     volatile int memory = -1, cpu = -1, storage = -1;     // percent used
     volatile int temperature = -1;                          // °C
@@ -58,9 +61,10 @@ final class SystemStats {
             try {
                 Thread.sleep(EVERY_MS);
             } catch (InterruptedException e) {
-                return;
+                break;
             }
         }
+        closeAdb();
     }
 
     private void sample() {
@@ -90,10 +94,38 @@ final class SystemStats {
         return Formatter.formatShortFileSize(context, used) + " / " + Formatter.formatShortFileSize(context, total);
     }
 
+    /**
+     * The first line of /proc/stat. Where SELinux hides it from apps, the TV's own ADB shell can still read it: only in
+     * Free My TV mode, when the TV already trusts this app's key (never a new "Allow USB debugging?" prompt).
+     */
+    private String procStat() {
+        try (BufferedReader r = new BufferedReader(new FileReader("/proc/stat"))) {
+            return r.readLine();
+        } catch (IOException e) {
+            // hidden: try the shell below
+        }
+        if (SystemClock.elapsedRealtime() < adbRetryAt
+                || !HomeMode.FREE.equals(HomeMode.state(context).optString("mode"))) return null;
+        try {
+            if (adb == null) adb = Adb.connect(context, 0, null);
+            String out = adb.shell("head -1 /proc/stat");
+            return out.startsWith("cpu ") ? out.trim() : null;
+        } catch (IOException e) {
+            closeAdb();
+            adbRetryAt = SystemClock.elapsedRealtime() + 60_000;
+            return null;
+        }
+    }
+
+    private void closeAdb() {
+        if (adb != null) adb.close();
+        adb = null;
+    }
+
     /** Percent of the processor in use since the last sample (all cores), or -1 when /proc/stat can't be read. */
     private int cpuUse() {
-        try (BufferedReader r = new BufferedReader(new FileReader("/proc/stat"))) {
-            String line = r.readLine();
+        try {
+            String line = procStat();
             if (line == null || !line.startsWith("cpu ")) return -1;
             String[] f = line.trim().split("\\s+");
             long total = 0, idle = 0;
@@ -109,7 +141,7 @@ final class SystemStats {
             lastIdle = idle;
             lastTotal = total;
             return use < 0 ? cpu : Math.max(0, Math.min(100, use));
-        } catch (IOException | RuntimeException e) {
+        } catch (RuntimeException e) {
             return -1;
         }
     }

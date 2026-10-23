@@ -255,7 +255,9 @@ final class HomeApps {
      */
     private static final String[][] PANELS = {
         {TOP_WIFI, Settings.ACTION_WIFI_SETTINGS, "action.htcsettings.networking"},
-        {TOP_BLUETOOTH, Settings.ACTION_BLUETOOTH_SETTINGS, "action.htcsettings.bluetooth"},
+        // Android TV 9 (TCL) has no Bluetooth screen of its own: its "add accessory" one pairs remotes and speakers
+        {TOP_BLUETOOTH, Settings.ACTION_BLUETOOTH_SETTINGS, "action.htcsettings.bluetooth",
+                "com.google.android.intent.action.CONNECT_INPUT"},
     };
 
     static Intent panelIntent(PackageManager pm, String key) {

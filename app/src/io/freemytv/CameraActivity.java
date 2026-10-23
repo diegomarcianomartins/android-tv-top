@@ -20,7 +20,8 @@ import java.util.List;
 
 /**
  * One DVR camera full screen (OK on a camera of the home screen). ← and → go to the previous and next camera, Back
- * returns. It asks for the camera's main stream (sharper) where the address says which one it is.
+ * returns. It asks for the camera's main stream (sharper) where the address says which one it is, then the substream when
+ * the main one doesn't play.
  */
 public final class CameraActivity extends Activity {
     private static final String EXTRA_INDEX = "index";
@@ -129,7 +130,7 @@ public final class CameraActivity extends Activity {
 
         @Override public void onSurfaceTextureAvailable(SurfaceTexture t, int w, int h) {
             if (stopped || !resumed) return;
-            stream = new CameraStream(mainStream(urls.get(index)), index, t, this);
+            stream = new CameraStream(urls.get(index), true, index, t, this);
         }
 
         @Override public void onSurfaceTextureSizeChanged(SurfaceTexture t, int w, int h) {}

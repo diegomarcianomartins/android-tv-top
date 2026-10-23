@@ -2886,7 +2886,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         applyTone();
         if (!picksOn()) {
             drawClock(c);
-            if (HomeData.coinCount() > 0) drawQuotes(c);
+            // The column's cards (own photo) cover the quotes' place under the clock: none there.
+            boolean column = ownColumn && bgTo != null && bgTo.photo != null;
+            if (HomeData.coinCount() > 0 && !column) drawQuotes(c);
             return;
         }
         String hello = Ui.tr("For You");

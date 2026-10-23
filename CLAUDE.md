@@ -197,6 +197,18 @@ desligado e root de fábrica (`SuperUser`). O que se aprendeu:
   DRM, e isso não se faz.
 - O chip esquenta: com 6 câmeras ao vivo chega a 90-99 °C. O cartão de sistema mostra a temperatura.
 
+### TCL com Android TV 9 (Realtek, "UnionTV", 1,4 GB)
+
+- Tela inicial clássica (`tvlauncher`), sem `TclAppBoot`: `AUTO_START` e `APP_AUTO_START` respondem
+  `Unknown operation string`, e não há nada a liberar.
+- O Wi-Fi da TV é lento (~85 KB/s, ping de até 400 ms) e ela já travou copiando APKs: copie um por vez, com pausas.
+  No Git Bash do Windows, use `MSYS_NO_PATHCONV=1` (senão os caminhos da TV viram `C:/Program Files/Git/...`) e tire
+  o `\r` da saída do `adb shell`. Os APKs em `/vendor` não saem por `adb pull`; ficam numa partição que não se apaga.
+- Sem a tela `BLUETOOTH_SETTINGS`: o botão Bluetooth abre `CONNECT_INPUT` (Adicionar acessório).
+- SELinux ligado: o app não lê `/proc/stat` nem a temperatura. O `SystemStats` lê o `/proc/stat` pelo ADB da própria TV
+  (só no modo Free My TV, sem pedir permissão de novo); a temperatura nem o shell lê.
+- Sem decodificador H.265: a tela cheia das câmeras cai do stream principal para o substream.
+
 ## O código
 
 - Java 8 de nível de linguagem, minSdk 26 (Android 8), targetSdk 33. Sem Gradle, sem bibliotecas: só o Android SDK.

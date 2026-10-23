@@ -63,6 +63,7 @@ final class HomeMode {
         "com.tcl.messagebox", "com.tcl.usercenter",                                   // TCL messages and account
         "com.tcl.exhibit", "com.tcl.esticker", "com.tcl.hotelmenu",                   // store demo, hotel menu
         "com.tcl.repairguide", "com.tcl.ocean.instructions", "com.tcl.logkit",        // repair guide, manual, logs
+        "com.tcl.bi",                                                                 // usage telemetry (Realtek, Android 9)
         // Multilaser (Expressluck / CVTE board)
         "tv.anoki.acr.anokiacroptin",                                                 // Anoki ACR: watches what's on screen
         "fusion.android.tv.demo", "com.expressluck.tvhelpmanual",                     // store demo (also Xiaomi projectors), manual
@@ -101,6 +102,12 @@ final class HomeMode {
         "com.tcl.settings", "com.tcl.common.shortcutmenu", "com.tcl.inputmethod.international", "com.tcl.android.webview",
         "com.tcl.wifi.resources.overlay", "com.tcl.partnercustomizer", "com.tcl.tv.tclhome_passive",
         "com.tcl.keycustomfunctionservice",                                           // remote keys; a fallback home too
+        // TCL on Android TV 9 (Realtek, UnionTV): input sources and passthrough, system overlays and framework, app
+        // state and boot services, updates, Netflix key settings, device config
+        "com.tcl.sourcemananger", "com.tcl.tvpassthrough", "com.tcl.systemuioverlay", "com.tcl.framework.custom",
+        "com.tcl.appstatecontroller", "com.tcl.xian.StartandroidService", "com.tcl.rc.ota", "com.tcl.versionUpdateApp",
+        "com.tcl.partnercustomizer.resource", "com.realtek.netflix.setting", "android.autoinstalls.config.tcl.device",
+        "com.android.ListenNetStateService",
         "com.google.android.gms", "com.google.android.gsf", "com.android.vending", "com.google.android.apps.mediashell",
         "com.google.android.tv.remote.service", "com.google.android.inputmethod.latin", "com.google.android.webview",
         "com.android.tv.settings", "com.android.systemui", "android", PKG,

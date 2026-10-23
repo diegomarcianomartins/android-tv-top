@@ -43,7 +43,7 @@ final class CameraStream implements Runnable {
 
     private static final long RETRY_MS = 5000, DEAD_RETRY_MS = 5 * 60_000, GOOD_MS = 60_000;
 
-    private final String[] urls;        // the address, then its main stream when it's a substream
+    private final String[] urls;        // the address, then its other stream (main or sub)
     private final String label;
     private String user, password, host, uri;
     private int port;
@@ -73,10 +73,17 @@ final class CameraStream implements Runnable {
     private boolean frameKey, fuActive, waitKey = true, live;
     private long liveAt;
 
-    /** `url`: rtsp://user:password@host:port/path. The password never goes to the log. */
     CameraStream(String url, int index, SurfaceTexture texture, Listener listener) {
+        this(url, false, index, texture, listener);
+    }
+
+    /**
+     * `url`: rtsp://user:password@host:port/path (a substream). The password never goes to the log. With `preferMain`
+     * the main stream is tried first and the substream follows it (a TV with no H.265 decoder: a TCL on Android 9).
+     */
+    CameraStream(String url, boolean preferMain, int index, SurfaceTexture texture, Listener listener) {
         String main = CameraActivity.mainStream(url);
-        urls = main.equals(url) ? new String[] {url} : new String[] {url, main};
+        urls = main.equals(url) ? new String[] {url} : preferMain ? new String[] {main, url} : new String[] {url, main};
         label = "camera " + (index + 1);
         this.texture = texture;
         this.listener = listener;
