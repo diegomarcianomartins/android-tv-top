@@ -1,247 +1,307 @@
-# Free My TV: notes for Claude
+# Free My TV: notas para o Claude
 
-A home screen for Google TV and Android TV that replaces the stock one, plus a settings app that switches between
-Free My TV and the TV's original home screen. A plain Android app in Java, built without Gradle by `build.sh`.
-LG TVs (webOS) and Samsung TVs (Tizen) get the same home screen as a web app: `web/`, packed by `webos/` and `tizen/`
-(see below).
-The website (freemytv.io) is in `docs/`: static HTML, CSS and JS, no build step. A push to `main` that changes it
-publishes it to GitHub Pages (`.github/workflows/pages.yml`). `docs/index.html` (English) and `docs/pt/index.html`
-(Brazilian Portuguese) are the same page in two languages, so change both; visitors from Brazil land on the
-Portuguese one by themselves, and the PT/EN switch in the menu is remembered.
-Before you push, run `tools/check.sh`: the Google TV build, `translate.py --check`, the LG and Samsung packages and
-ES5 in `web/` (syntax and the newer calls old TVs lack). Every pull request runs it too (`.github/workflows/check.yml`).
+Uma tela inicial para Google TV e Android TV que substitui a de fábrica, mais um app de configurações que alterna entre
+o Free My TV e a tela inicial original da TV. Um app Android simples em Java, compilado sem Gradle pelo `build.sh`.
+TVs LG (webOS) e Samsung (Tizen) ganham a mesma tela inicial como app web: `web/`, empacotado por `webos/` e `tizen/`
+(veja abaixo).
+O site (freemytv.io) fica em `docs/`: HTML, CSS e JS estáticos, sem etapa de build. Um push na `main` que mexa nele
+publica no GitHub Pages (`.github/workflows/pages.yml`). `docs/index.html` (inglês) e `docs/pt/index.html`
+(português do Brasil) são a mesma página em dois idiomas, então altere as duas; quem visita do Brasil cai sozinho na
+portuguesa, e a escolha PT/EN no menu fica lembrada.
+Antes de dar push, rode `tools/check.sh`: o build do Google TV, `translate.py --check`, os pacotes LG e Samsung e o ES5
+em `web/` (sintaxe e as chamadas mais novas que TVs antigas não têm). Todo pull request roda isso também
+(`.github/workflows/check.yml`).
 
-The person you're helping may not be technical. Keep it short and friendly, say what you're about to do on their TV
-before you do it, and let them do the taps on the TV.
+A pessoa que você está ajudando pode não ser técnica. Seja breve e simpático, diga o que vai fazer na TV dela antes de
+fazer, e deixe que ela mesma aperte os botões na TV.
 
-## Installing it for someone
+## Instalando para alguém
 
-1. **Ask** for the TV's IP address and their city, if they didn't say.
-2. **Tools:** a JDK 17+, the Android SDK command-line tools (build-tools 34+, platform android-34) and adb. Check
-   what's already there (`java -version`, `$ANDROID_HOME`, `adb version`) and install only what's missing.
-   - macOS: `brew install --cask temurin android-commandlinetools android-platform-tools`, then
+1. **Pergunte** o IP da TV e a cidade, se ela não disse.
+2. **Ferramentas:** um JDK 17+, as ferramentas de linha de comando do Android SDK (build-tools 34+, platform android-34)
+   e o adb. Veja o que já existe (`java -version`, `$ANDROID_HOME`, `adb version`) e instale só o que falta.
+   - macOS: `brew install --cask temurin android-commandlinetools android-platform-tools`, depois
      `sdkmanager "build-tools;34.0.0" "platforms;android-34"`.
-   - Linux: OpenJDK 17, Android's command-line tools and adb from the package manager, then the same `sdkmanager` line.
-   - Windows: Git Bash (what Claude Code runs there; `build.sh` handles it) or WSL, then as on Linux.
-3. **Settings:** run `./build.sh` once; it creates `config.properties`. Fill in `latitude` and `longitude` (decimal
-   degrees) and `city` for their city, `tmdb_region` (two-letter country), `show_crypto`, `currency` and `temperature` to match.
-4. **The TMDB key is theirs and secret.** Ask them to create one (free: themoviedb.org → Settings → API) and paste it
-   after `tmdb_key=` in `config.properties` themselves. Don't ask for it in the chat, never print it, never commit
-   it. If they paste it in the chat anyway, put it only in `config.properties`.
-   Without a key everything works except the picks and the screensaver photos.
-   The same goes for the optional `watchmode_key` (free, watchmode.com; makes picks open the title's page): theirs, secret, only in `config.properties`.
-5. **Build:** `./build.sh` → `FreeMyTV.apk`. Keep `freemytv.keystore`: updates must be signed with the same key.
-6. **Install:** `adb connect <IP>:5555`. The TV asks *Allow USB debugging?*: tell them to accept and tick *Always
-   allow*. Then `adb install -r FreeMyTV.apk`. On TCL, also `adb shell "appops set io.freemytv AUTO_START allow || appops set io.freemytv APP_AUTO_START allow"`
-   (some firmware calls the operation `APP_AUTO_START`; this tries both):
-   TCL's `TclAppBoot` blocks background jobs by default, so the switch (and the watchdog) never run. The log shows
-   `forbid bind service ... ModeJob`. Some TCL firmware has neither (a 2024 MediaTek Google TV, Android 14, has no
-   `TclAppBoot`): both names answer `Unknown operation string`, and nothing needs allowing.
-   On a Mac, `adb connect` can fail with `No route to host` while the TV answers (`nc -z <IP> 5555` connects): macOS's
-   Local Network privacy blocks the adb server that adb starts in the background. Start it from the same terminal
-   instead (`adb kill-server; adb nodaemon server &`), or allow the terminal app under System Settings → Privacy &
-   Security → Local Network.
-7. **Tell them what the switch does** before they make it: the home screen and screensaver change, a short list of
-   promo apps is turned off (never uninstalled), and *Original* brings it all back. On TCL, the remote's Netflix,
-   YouTube and Prime buttons keep working through a small accessibility service that only reads those buttons
-   (*Free My TV* → *Remote Buttons* picks what each opens); *Original* turns it off.
-8. **They switch on the TV:** *Free My TV* → *Home Screen* → *Free My TV*. The app uses the TV's own ADB on
-   127.0.0.1 with its own key, so the TV asks once more to allow debugging. Don't switch modes from the computer.
-   If the TV's Wi-Fi was saved during its first setup, the switch stops before changing anything and asks them to
-   forget the network and connect again in Settings (Network & Internet); then the switch goes through. Saved
-   networks out of range don't show in Settings: find the ones with `cname=com.google.android.tungsten.setupwraith`
-   in `adb shell dumpsys wifi` (each block starts with its `ID:`), and with their OK remove them with
+   - Linux: OpenJDK 17, as ferramentas de linha de comando do Android e o adb pelo gerenciador de pacotes, depois a
+     mesma linha do `sdkmanager`.
+   - Windows: Git Bash (o que o Claude Code usa lá; o `build.sh` funciona nele) ou WSL, depois como no Linux. Pelo
+     `winget`: `EclipseAdoptium.Temurin.17.JDK` e `Google.PlatformTools`; as ferramentas de linha de comando vêm de
+     dl.google.com (`commandlinetools-win-*_latest.zip`, em `%LOCALAPPDATA%\Android\Sdk\cmdline-tools\latest`).
+3. **Configurações:** rode `./build.sh` uma vez; ele cria o `config.properties`. Preencha `latitude` e `longitude`
+   (graus decimais) e `city` com a cidade da pessoa, `tmdb_region` (país, duas letras), `show_crypto`, `currency` e
+   `temperature` de acordo.
+4. **A chave do TMDB é da pessoa e é secreta.** Peça que ela crie uma (grátis: themoviedb.org → Settings → API) e cole
+   depois de `tmdb_key=` no `config.properties` ela mesma. Não peça a chave no chat, nunca mostre, nunca faça commit
+   dela. Se ela colar no chat mesmo assim, coloque só no `config.properties`.
+   Sem a chave tudo funciona, menos as sugestões e as fotos da tela de descanso.
+   O mesmo vale para a `watchmode_key` opcional (grátis, watchmode.com; faz as sugestões abrirem a página do título):
+   da pessoa, secreta, só no `config.properties`. E para os endereços das câmeras (`dvr_cameras`), que levam a senha do
+   DVR: quem preenche é a pessoa; leia o arquivo sem mostrar a senha.
+5. **Build:** `./build.sh` → `FreeMyTV.apk`. Guarde o `freemytv.keystore`: as atualizações precisam ser assinadas com a
+   mesma chave.
+6. **Instalação:** `adb connect <IP>:5555`. A TV pergunta *Permitir depuração USB?*: diga para aceitar e marcar
+   *Sempre permitir*. Depois `adb install -r FreeMyTV.apk`. Na TCL, também
+   `adb shell "appops set io.freemytv AUTO_START allow || appops set io.freemytv APP_AUTO_START allow"`
+   (alguns firmwares chamam a operação de `APP_AUTO_START`; isso tenta as duas):
+   o `TclAppBoot` da TCL bloqueia tarefas em segundo plano por padrão, então a troca (e o watchdog) nunca rodam. O log
+   mostra `forbid bind service ... ModeJob`. Alguns firmwares TCL não têm nenhuma das duas (um Google TV MediaTek de
+   2024, Android 14, não tem `TclAppBoot`): os dois nomes respondem `Unknown operation string`, e não há nada a liberar.
+   No Mac, o `adb connect` pode falhar com `No route to host` mesmo com a TV respondendo (`nc -z <IP> 5555` conecta):
+   a privacidade de Rede Local do macOS bloqueia o servidor do adb que o adb inicia em segundo plano. Inicie-o no mesmo
+   terminal (`adb kill-server; adb nodaemon server &`), ou libere o app de terminal em Ajustes do Sistema → Privacidade
+   e Segurança → Rede Local.
+7. **Explique o que a troca faz** antes que ela aconteça: a tela inicial e a tela de descanso mudam, uma lista curta de
+   apps de propaganda é desligada (nunca desinstalada), e *Original* traz tudo de volta. Na TCL, os botões Netflix,
+   YouTube e Prime do controle continuam funcionando por um pequeno serviço de acessibilidade que só lê esses botões
+   (*Free My TV* → *Remote Buttons* escolhe o que cada um abre); *Original* desliga o serviço.
+8. **A troca é feita na TV:** *Free My TV* → *Home Screen* → *Free My TV*. O app usa o ADB da própria TV em 127.0.0.1
+   com sua própria chave, então a TV pergunta mais uma vez se permite a depuração. Não troque de modo pelo computador.
+   Se o Wi-Fi da TV foi salvo na primeira configuração, a troca para antes de mudar qualquer coisa e pede que a pessoa
+   esqueça a rede e conecte de novo em Configurações (Rede e Internet); aí a troca vai até o fim. Redes salvas fora de
+   alcance não aparecem em Configurações: ache as que têm `cname=com.google.android.tungsten.setupwraith` em
+   `adb shell dumpsys wifi` (cada bloco começa com o seu `ID:`) e, com o OK da pessoa, remova com
    `adb shell cmd wifi forget-network <id>`.
-9. **Check:** `adb logcat -s FreeMyTV` shows what the switch did.
+9. **Confira:** `adb logcat -s FreeMyTV` mostra o que a troca fez.
 
-## Installing it on an LG TV (webOS)
+## Instalando numa TV LG (webOS)
 
-On LG it's an app, installed through LG's Developer Mode, and it changes nothing else on the TV: LG's home screen
-stays, and Free My TV opens with a long press of a number key.
+Na LG é um app, instalado pelo Modo Desenvolvedor da LG, e não muda mais nada na TV: a tela inicial da LG continua, e o
+Free My TV abre com um toque longo numa tecla numérica.
 
-1. **Ask** for the TV's IP address and their city, if they didn't say. Tools: Python 3 and OpenSSH (`ssh`,
-   `ssh-keygen`), already on macOS, Linux and Windows 10+.
-2. **On the TV** (they do it): LG Content Store → *Developer Mode* → sign in with a free LG developer account
-   (webostv.developer.lge.com) → *Dev Mode Status* on (the TV restarts) → *Key Server* on. It shows the IP and a
-   passphrase.
-3. **Settings:** the same `config.properties` as on Android (the first `python3 webos/build.py` creates it). The
-   TMDB key rules above apply.
-4. **Build:** `python3 webos/build.py` must end with `Built FreeMyTV-webos.ipk`.
-5. **Install:** the first time needs the TV's passphrase, typed by them: ask them to run
-   `python3 webos/install.py <IP>` in their own terminal (yours can't answer its prompt, and the passphrase doesn't go
-   in the chat). It keeps the unlocked key in `~/.ssh/freemytv_webos_<IP>`, so later updates run from your terminal
-   with the same command.
-6. **Tell them:** while Free My TV is open, holding a number key pins it to that key. Developer Mode lasts about 40
-   days; *EXTEND* in that app renews it (if it runs out, the TV removes developer apps, and installing again brings it
-   back). `--uninstall` removes Free My TV.
+1. **Pergunte** o IP da TV e a cidade, se ela não disse. Ferramentas: Python 3 e OpenSSH (`ssh`, `ssh-keygen`), que já
+   vêm no macOS, Linux e Windows 10+.
+2. **Na TV** (a pessoa faz): LG Content Store → *Developer Mode* → entrar com uma conta grátis de desenvolvedor LG
+   (webostv.developer.lge.com) → *Dev Mode Status* ligado (a TV reinicia) → *Key Server* ligado. Aparecem o IP e uma
+   senha (passphrase).
+3. **Configurações:** o mesmo `config.properties` do Android (o primeiro `python3 webos/build.py` cria o arquivo). As
+   regras da chave do TMDB acima valem aqui.
+4. **Build:** `python3 webos/build.py` tem que terminar com `Built FreeMyTV-webos.ipk`.
+5. **Instalação:** a primeira vez precisa da senha da TV, digitada pela pessoa: peça que ela rode
+   `python3 webos/install.py <IP>` no terminal dela (o seu não consegue responder ao pedido, e a senha não vai no chat).
+   Ele guarda a chave liberada em `~/.ssh/freemytv_webos_<IP>`, então as atualizações seguintes rodam do seu terminal
+   com o mesmo comando.
+6. **Explique:** com o Free My TV aberto, segurar uma tecla numérica prende o app nela. O Modo Desenvolvedor dura uns
+   40 dias; *EXTEND* naquele app renova (se acabar, a TV remove os apps de desenvolvedor, e instalar de novo traz de
+   volta). `--uninstall` remove o Free My TV.
 
-## Installing it on a Samsung TV (Tizen)
+## Instalando numa TV Samsung (Tizen)
 
-On Samsung it's an app too (2017 and newer, Tizen 3+), installed through Samsung's Developer Mode; Samsung's home
-screen stays. Two ways:
+Na Samsung também é um app (2017 em diante, Tizen 3+), instalado pelo Modo Desenvolvedor da Samsung; a tela inicial da
+Samsung continua. Dois caminhos:
 
-- **The release, no tools:** TizenBrew Installer (github.com/reisxd/TizenBrewInstaller) installs the latest GitHub
-  release when they type `simbasjungles/free-my-tv`, and on 2023+ TVs signs it with their Samsung account. That build
-  has no TMDB key (no picks) and takes the city from the TV's time zone. Walk them through the README's steps.
-- **Their own build** (their city, their TMDB key), below.
+- **A versão publicada, sem ferramentas:** o TizenBrew Installer (github.com/reisxd/TizenBrewInstaller) instala a
+  última release do GitHub quando a pessoa digita `simbasjungles/free-my-tv` e, em TVs 2023+, assina com a conta
+  Samsung dela. Essa versão não tem chave do TMDB (sem sugestões) e pega a cidade pelo fuso horário da TV. Guie a
+  pessoa pelos passos do README.
+- **Uma versão própria** (com a cidade e a chave do TMDB dela), abaixo.
 
-1. **Ask** for the TV's IP address and their city, if they didn't say.
-2. **On the TV** (they do it): *Apps* → type `1 2 3 4 5` on the remote → *Developer mode* on, *Host PC IP* = this
-   computer's IP → restart the TV.
-3. **Tools:** Samsung's `tizen` command to sign (Tizen Studio's CLI, or Samsung's Claude Code plugin
-   `tizen-sdk-skills` from github.com/Samsung/tizen-agent-skills, which installs it and makes Samsung certificates),
-   and `python3 tizen/install.py` to install, which speaks SDB itself. `tizen` runs on Java; Samsung's `sdb`, its new
-   `tz` and Tizen Studio's installer (with its own JDK) are Intel binaries on macOS. On Apple Silicon without Rosetta,
-   take the CLI from Samsung's package repository (download.tizen.org/sdk/tizenstudio/official, `pkg_list_macos-64`;
-   check each zip's SHA256 there): unzip the `data/` of `new-common-cli`, `certificate-generator`, `sdk-utils` and
-   `sdk-utils-core` into `~/tizen-studio`, then write `~/tizen-studio/sdk.info` with three lines,
-   `TIZEN_SDK_INSTALLED_PATH=<that folder>`, `TIZEN_SDK_DATA_PATH=<home>/tizen-studio-data` and `JDK_PATH=<a native
-   JDK 17's .jdk folder>` (Homebrew: `/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk`). That `tizen` signs natively.
-4. **Certificate, once:** 2023+ TVs (Tizen 7+) need a Samsung certificate, made with their Samsung account for this TV
-   (its DUID): the plugin's Samsung profile opens the browser for them to sign in, or Tizen Studio's Certificate
-   Manager does it. 2017-2022 TVs take a Tizen certificate (`tizen certificate`, then `tizen security-profiles add`
-   and `tizen cli-config "profiles.path=<home>/tizen-studio-data/profile/profiles.xml"`; on macOS the passwords go to
-   the login Keychain). Certificate passwords are theirs: they type them in their own terminal, never in the chat.
-5. **Settings:** the same `config.properties`; the TMDB key rules above apply.
-6. **Build and sign:** `python3 tizen/build.py --sign <profile>` must end with `Built FreeMyTV-tizen.wgt (...,
-   signed with "<profile>")`.
-7. **Install:** `python3 tizen/install.py <IP>`: it pushes the app over SDB (port 26101), installs it with the TV's
-   `0 vd_appinstall` and opens it with `0 was_execute` (tested on 2017 Tizen 3.0 and 2019 Tizen 5.0 TVs); it only
-   reports success when the TV says `install completed` (`cmd_ret:0` comes after failures too). `--uninstall` removes
-   it; some TVs' sdbd doesn't answer that, and then it's removed on the TV (Apps, Settings, Free My TV, Delete).
-   With Samsung's tools instead: `sdb connect <IP>`, `tizen install -n FreeMyTV-tizen.wgt -t <serial from sdb
-   devices>` and `tizen run -p FreeMyTVio.FreeMyTV -t <serial>`. Updates need the same certificate: the TV refuses
-   one signed by another (uninstall first). A retail TV's sdbd only takes files (`filesync_support:push`): nothing
-   can be pulled from it. To look inside the running app, `0 debug FreeMyTVio.FreeMyTV 300` over SDB opens it with
-   a Web Inspector port (Runtime.evaluate works on Tizen 3; screenshots don't).
-8. **Tell them:** *Autorun Last App* in the TV's settings (under Start Screen Options; where it is changes by year)
-   makes the TV turn on into Free My TV.
+1. **Pergunte** o IP da TV e a cidade, se ela não disse.
+2. **Na TV** (a pessoa faz): *Apps* → digitar `1 2 3 4 5` no controle → *Developer mode* ligado, *Host PC IP* = o IP
+   deste computador → reiniciar a TV.
+3. **Ferramentas:** o comando `tizen` da Samsung para assinar (a CLI do Tizen Studio, ou o plugin da Samsung para
+   Claude Code, `tizen-sdk-skills`, de github.com/Samsung/tizen-agent-skills, que instala a CLI e cria certificados
+   Samsung), e `python3 tizen/install.py` para instalar, que fala SDB por conta própria. O `tizen` roda em Java; o
+   `sdb` da Samsung, o novo `tz` e o instalador do Tizen Studio (com o próprio JDK) são binários Intel no macOS. Em
+   Apple Silicon sem Rosetta, pegue a CLI do repositório de pacotes da Samsung (download.tizen.org/sdk/tizenstudio/official,
+   `pkg_list_macos-64`; confira o SHA256 de cada zip ali): descompacte o `data/` de `new-common-cli`,
+   `certificate-generator`, `sdk-utils` e `sdk-utils-core` em `~/tizen-studio`, depois escreva `~/tizen-studio/sdk.info`
+   com três linhas, `TIZEN_SDK_INSTALLED_PATH=<essa pasta>`, `TIZEN_SDK_DATA_PATH=<home>/tizen-studio-data` e
+   `JDK_PATH=<a pasta .jdk de um JDK 17 nativo>` (Homebrew: `/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk`). Esse
+   `tizen` assina de forma nativa.
+4. **Certificado, uma vez:** TVs 2023+ (Tizen 7+) precisam de um certificado Samsung, feito com a conta Samsung da
+   pessoa para esta TV (o DUID dela): o perfil Samsung do plugin abre o navegador para ela entrar, ou o Certificate
+   Manager do Tizen Studio faz isso. TVs 2017-2022 aceitam um certificado Tizen (`tizen certificate`, depois
+   `tizen security-profiles add` e `tizen cli-config "profiles.path=<home>/tizen-studio-data/profile/profiles.xml"`;
+   no macOS as senhas vão para o Keychain de login). As senhas do certificado são da pessoa: ela digita no terminal
+   dela, nunca no chat.
+5. **Configurações:** o mesmo `config.properties`; as regras da chave do TMDB acima valem aqui.
+6. **Build e assinatura:** `python3 tizen/build.py --sign <perfil>` tem que terminar com `Built FreeMyTV-tizen.wgt (...,
+   signed with "<perfil>")`.
+7. **Instalação:** `python3 tizen/install.py <IP>`: envia o app por SDB (porta 26101), instala com o `0 vd_appinstall`
+   da TV e abre com `0 was_execute` (testado em TVs 2017 Tizen 3.0 e 2019 Tizen 5.0); só informa sucesso quando a TV
+   diz `install completed` (`cmd_ret:0` aparece também depois de falhas). `--uninstall` remove; o sdbd de algumas TVs
+   não responde a isso, e aí a remoção é feita na TV (Apps, Configurações, Free My TV, Excluir).
+   Com as ferramentas da Samsung: `sdb connect <IP>`, `tizen install -n FreeMyTV-tizen.wgt -t <serial do sdb devices>`
+   e `tizen run -p FreeMyTVio.FreeMyTV -t <serial>`. As atualizações precisam do mesmo certificado: a TV recusa uma
+   assinada por outro (desinstale antes). O sdbd de uma TV de varejo só recebe arquivos (`filesync_support:push`):
+   nada pode ser puxado dela. Para olhar dentro do app rodando, `0 debug FreeMyTVio.FreeMyTV 300` por SDB abre o app
+   com uma porta de Web Inspector (Runtime.evaluate funciona no Tizen 3; capturas de tela não).
+8. **Explique:** *Autorun Last App* nas configurações da TV (em Start Screen Options; o lugar muda conforme o ano) faz
+   a TV ligar direto no Free My TV.
 
 ## Releases
 
-TizenBrew Installer takes the first `.wgt` of the latest GitHub release, so every release carries
-`FreeMyTV-tizen.wgt`: built with `--generic` (no config.properties: no key, the city from the time zone) and signed
-with a Tizen certificate (`--sign`), which 2017-2022 TVs install as it is; on 2023+ TVs the installer signs it again
-with the person's Samsung certificate. Sign every release with the same author certificate: older TVs refuse an
-update signed by another. `python3 webos/build.py --generic` makes the LG `.ipk` that goes along.
+O TizenBrew Installer pega o primeiro `.wgt` da última release do GitHub, então toda release leva o
+`FreeMyTV-tizen.wgt`: compilado com `--generic` (sem config.properties: sem chave, cidade pelo fuso horário) e assinado
+com um certificado Tizen (`--sign`), que TVs 2017-2022 instalam como está; em TVs 2023+ o instalador assina de novo
+com o certificado Samsung da pessoa. Assine toda release com o mesmo certificado de autor: TVs mais antigas recusam
+uma atualização assinada por outro. `python3 webos/build.py --generic` gera o `.ipk` da LG que vai junto.
 
-## Adapting it to another TV
+## Adaptando para outra TV
 
-Read first, change after. Read-only commands that tell you what the TV has:
+Leia primeiro, mude depois. Comandos só de leitura que mostram o que a TV tem:
 
 ```bash
 adb shell getprop ro.product.brand; adb shell getprop ro.product.model; adb shell getprop ro.build.version.release
 adb shell cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME
 adb shell cmd role get-role-holders android.app.role.HOME
 adb shell settings get secure screensaver_components; adb shell settings get secure screensaver_default_component
-adb shell pm list packages -s     # system apps (-3 for the ones they installed)
+adb shell pm list packages -s     # apps de sistema (-3 para os que a pessoa instalou)
 ```
 
-Then, in the code:
+Antes de mudar qualquer coisa numa TV desconhecida, faça um backup do estado dela: `getprop`, `pm list packages -f -u`
+(e `-e`, `-d`, `-3`), `settings list global|secure|system`, a tela inicial atual (`cmd package resolve-activity`), e
+os APKs dos apps do fabricante (`pm path` + `adb pull`), mais um script que restaure tudo. Guarde fora do git
+(`.git/info/exclude`).
 
-- `HomeMode.DEBLOAT`: add the brand's promo, demo, store-mode and telemetry apps, one comment per line. Only those.
-- `HomeMode.PROTECTED`: add the brand's system pieces: picture, sound, inputs and HDMI-CEC, the tuner and live TV,
-  remote and Bluetooth pairing, setup, updates, system UI. When in doubt, protect it. `mayTurnOff` also refuses
-  Android's own pieces (`CORE`: with the permission controller or package installer off, a TV may not start again) and
-  factory menus (`FACTORY`), and `neededByTv` keeps on, on the TV itself, anything that asks for `TV_INPUT_HARDWARE`
-  (the layer under HDMI and the tuner: off, inputs show "No signal") or receives the remote's Input key
-  (`fusion.android.tv.demo` does on several MediaTek boards).
-- `HomeApps.SHELF`, `LIVE_TV_APPS` and `HIDDEN`: the shelf apps, the brand's live TV app, apps to hide from All Apps.
-- Build, install, have them switch on the TV, read `adb logcat -s FreeMyTV`, then have them switch back to
-  *Original* once and confirm everything returned.
+Depois, no código:
 
-LG and Samsung: the web app above. Other TVs that don't run Google TV or Android TV: the way is a Google TV streamer on
-HDMI (Chromecast with Google TV, Google TV Streamer, onn 4K, NVIDIA Shield). Set Free My TV up on the streamer.
+- `HomeMode.DEBLOAT`: adicione os apps de propaganda, demonstração, modo loja e telemetria da marca, um comentário por
+  linha. Só esses.
+- `HomeMode.PROTECTED`: adicione as peças de sistema da marca: imagem, som, entradas e HDMI-CEC, o sintonizador e a TV
+  ao vivo, pareamento do controle e Bluetooth, configuração inicial, atualizações, interface do sistema. Na dúvida,
+  proteja. `mayTurnOff` também recusa as peças do próprio Android (`CORE`: com o controlador de permissões ou o
+  instalador de pacotes desligados, uma TV pode não ligar mais) e menus de fábrica (`FACTORY`), e `neededByTv` mantém
+  ligado, na própria TV, tudo que pede `TV_INPUT_HARDWARE` (a camada abaixo do HDMI e do sintonizador: desligada, as
+  entradas mostram "Sem sinal") ou recebe a tecla Input do controle (`fusion.android.tv.demo` faz isso em várias
+  placas MediaTek).
+- `HomeApps.SHELF`, `LIVE_TV_APPS` e `HIDDEN`: os apps da barra, o app de TV ao vivo da marca, apps a esconder de Todos
+  os Apps. `HomeApps.UNLISTED`: telas de configuração sem ícone, que só a tela inicial de fábrica abria (o ajuste de
+  trapézio dos projetores Amlogic aparece em Todos os Apps como "Projeção").
+- Build, instale, peça que a pessoa faça a troca na TV, leia `adb logcat -s FreeMyTV`, depois peça que ela volte para
+  *Original* uma vez e confirme que tudo voltou.
+- **Reinicie a TV pelo menos uma vez** depois da troca e confira que a tela inicial aparece sozinha.
 
-**Uninstalled while in Free My TV mode?** The apps it turned off stay off. Bring them back with
-`adb shell pm enable <package>` (the `DEBLOAT` list and the stock home screen), then
-`adb shell cmd package set-home-activity <stock home activity>` and
-`adb shell settings put secure screensaver_components <stock screensaver>`.
+LG e Samsung: o app web acima. Outras TVs que não rodam Google TV nem Android TV: o caminho é um aparelho Google TV no
+HDMI (Chromecast com Google TV, Google TV Streamer, onn 4K, NVIDIA Shield). Configure o Free My TV no aparelho.
 
-## The code
+**Desinstalado enquanto estava no modo Free My TV?** Os apps que ele desligou continuam desligados. Traga de volta com
+`adb shell pm enable <pacote>` (a lista `DEBLOAT` e a tela inicial de fábrica), depois
+`adb shell cmd package set-home-activity <activity da tela inicial de fábrica>` e
+`adb shell settings put secure screensaver_components <tela de descanso de fábrica>`.
 
-- Java 8 language level, minSdk 26 (Android 8), targetSdk 33. No Gradle, no libraries: only the Android SDK.
-  Android 9 and older have no RenderNode (`Recording` wraps it, with a Picture there) and no `cmd role`. On Android 8 to 11
-  (`Ui.LEGACY`) the home screen skips the GPU layers, draws blurred shadows from cached bitmaps (`Shadows`) and
-  rounds images with a shader instead of clipPath: their GPUs (a Mi Box 3's Mali-450) choked on those.
-  Android 11 runs the screensaver as `ScreensaverAlone`, in the main process (its DreamActivity needs the dream in the
-  app's default process, without a home activity); `res/values-v30/bools.xml` picks it, every other version keeps
-  `Screensaver` in `:home`. Keep both in step.
-  To check for newer APIs, compile against `platforms/android-26/android.jar`: only AGSL (`RuntimeShader`, guarded
-  by a try/catch), `BitmapShader.setFilterMode` (guarded), `Recording.Node` and `Ui.Weighted` (the Android 9 font weight) should come up.
-- The home screen is drawn by hand on one Canvas (`HomeView`); the glass and the sky are AGSL shaders (`Shaders`,
-  Android 13+, with a fallback for 8 to 12). Keep it at 60 fps: no allocations in `onDraw`, no work on the UI thread.
-- Some TVs draw their UI at 1280×720 on a 1080p panel (TCL's 1 GB models: `ro.surface_flinger.max_graphics_width`
-  and `_height`, `ro.config.low_ram`). There every pixel and every MB counts: `Backdrop` builds its images at the UI's
-  size (and the picks use TMDB's w1280), and the shelf logos have a copy at the resting size and one at the focused
-  size, so both draw pixel for pixel.
-- `HomeMode` runs every switch as a background job (`ModeJob`) in the main process; the UI is in the `:home`
-  process. `Watchdog` goes back to the stock home screen after 3 crashes in 5 minutes.
-- On-screen text: `Ui.tr("English")`, translated from `app/assets/i18n/<lang>.json` (keyed by the English; one
-  HashMap lookup, English when a language lacks it). Text built at runtime is a pattern: `Ui.trf("{n} min ago", "n", 12)`,
-  never concatenated words. A key `"context|Text"` is the same English where a language may need another word
-  (`"unit|Automatic"`, `"format|h:mm"` holds a SimpleDateFormat pattern). A count with a word is
-  `Ui.plural("plural|one:{n} season|other:{n} seasons", n)`: each catalogue gives one form per CLDR plural category of
-  its language (`one`/`few`/`many`/`other` in Russian, Ukrainian, Polish; only `other` in Japanese, Chinese…), and
-  ICU's rules pick one. Portuguese, Spanish, German and Russian are hand translations: the reference, edited by hand,
-  never replaced with machine ones. Dates and numbers use `Ui.locale()`. Text
-  drawn every frame is cached and made again when `Ui.generation` changes. After changing text, run
-  `python3 tools/translate.py`: it rebuilds `en.json` from the code and lists what each language lacks; translate those
-  in every catalogue (or `--fill` with `ANTHROPIC_API_KEY`, which sends only the strings), and keep placeholders as they
-  are. Run `python3 tools/translate.py --check` to validate all catalogues without writing files.
-  No right-to-left languages yet (the layout isn't mirrored); CJK and Devanagari use the system font.
-  Comments in English, short, only where the why isn't obvious.
-- Settings come from `config.properties` through the generated `out/gen/io/freemytv/Config.java` (never edit that).
-  What the person changes on the TV (`Prefs`: Home Settings, Shelf, Remote Buttons) wins over those first values.
-- The remote's app buttons (`RemoteKeys`, `RemoteKeyService`) use each brand's key codes: they run only on TCL,
-  Vestel, KTC (NextStar) and Sony TVs and Formovie projectors, the service is on only in Free My TV mode, and *Original* takes it out of the enabled accessibility
-  services. The system waits for the service on every key, so it lives alone in the `:keys` process: what it reads is
-  in `remote-keys.txt` (`Prefs.keyApp`), never in SharedPreferences, and `onKeyEvent` does no heavy work.
-  Vestel (F&U and other store brands; MediaTek, Android TV 14 tested) maps its Netflix button to `KEYCODE_STEM_1`, a
-  global key (`dumpsys window policy` lists them) that the key filter sees first; its YouTube, Prime Video and Google
-  Play buttons stay with the system. The stock lists needed no Vestel entries.
-  KTC (NextStar; MediaTek, Google TV 14 tested) maps its Tabii button to `KEYCODE_BUTTON_8`, also a global key, which
-  KTC's own hot-key receiver would open Tabii with; its Netflix, YouTube and Prime Video buttons stay with the system.
-  Sony (BRAVIA VH22, Android TV 12 tested) sends `KEYCODE_BUTTON_9` for its BRAVIA CORE, Disney+, Prime Video,
-  YouTube and Crunchyroll buttons, `KEYCODE_BUTTON_4` for Netflix and `KEYCODE_BUTTON_8` for the Google Play button of
-  older remotes (BRAVIA 4K UR3, Android 10 tested), global keys for `com.sony.dtv.sonyvendorservice`;
-  only the scan code tells them apart, so `Prefs` keys them as `SONY_KEY` + scan code. "Sony default" (empty) leaves
-  the key to the TV. Sony ships its own Apple TV build, `com.apple.atve.sony.appletv`.
-  Xiaomi projectors made by Formovie (Fengmi; L1, MediaTek, Google TV 14 tested) send the same `KEYCODE_STEM_1` for
-  Netflix (`RemoteKeys.STEM_NETFLIX`); their YouTube button goes to MediaTek's `GlobalKeyReceiver` and stays with the system.
-- After any change, `./build.sh` must end with `Built FreeMyTV.apk`.
-- LG and Samsung (`web/`): plain ES5 JavaScript and CSS without variables, grid or backdrop-filter, since older TVs
-  (webOS 3 and 4, Tizen 3) run a Chromium from 2015 to 2017; only transform and opacity animate. `web/tv.js` is the
-  TV's side: on LG, Luna (`listLaunchPoints`, `launch`, the inputs; where webOS 6 and newer deny `listLaunchPoints`
-  to Developer Mode apps, the list comes from the TV's remote control API on `ws://127.0.0.1:3000` once the TV has
-  allowed it (it asks once; a "no" isn't asked again), and until then from `getAppLoadStatus` over a list of known
-  app ids, which shows their names without icons); on Samsung, `tizen.application` (`getAppsInfo`,
-  `launch`), the `VIDEOSOURCE` property and `tizen.tvwindow.setSource` for the inputs, then Samsung's viewer
-  (`org.tizen.tv-viewer`) to show them. Samsung's own data is unreliable: on Tizen 3 no app's `iconPath` loads (on
-  Tizen 4 and 5, YouTube's and Prime Video's are a placeholder), so logos are bundled in `web/icons/` and keyed by app
-  id in `SAMSUNG_ICONS` (SVGs need a width and height for old WebKit); some names are empty or long
-  (`SAMSUNG_TITLES`); and Tizen 3 answers no "settings" app control, so TV Settings opens `org.tizen.menu`.
-  `web/home.js` follows `HomeView`'s layout and behavior, so a design change on
-  Android belongs there too. Text: the same catalogues as Android, packed into `i18n.js` by `tools/webapp.py` (only
-  the keys `web/` uses): `tr('Live TV')`, `trf('{n} min ago', {n: 12})`, `plural('plural|…', n)` and
-  `formatDate('format|h:mm a', at)` (the catalogue's SimpleDateFormat pattern, written by `web/strings.js`), and
-  `tools/translate.py` reads those calls too. Built without a city (`--generic`), `web/zones.js`
-  (`tools/make_zones.py`, from the tz database) turns the TV's time zone into the city, the currency and the region.
-  `tools/webapp.py` is what both builds share. Preview: `python3 webos/build.py --preview` (or `tizen/build.py`), then
-  open `out/webos/index.html` in a browser (a stand-in lists sample apps).
+### Projetores Amlogic genéricos (launcher HTC/JM, t950s, Android 13)
 
-## Always
+Projetores baratos, com a marca "Google" falsa nas propriedades, 1 GB de RAM, interface em 1280×720, SELinux
+desligado e root de fábrica (`SuperUser`). O que se aprendeu:
 
-- Google TV's setup app (`setupwraith`) goes off before the stock home screen and comes back after it, everywhere
-  (`targets` order, `applyOriginal`, `revertHomeNow`, `verifyNow`): with the home screen off and it on, its
-  RecoveryActivity takes Home, and a restart there factory-reset a Xiaomi. If it can't go off, the home screen stays on.
-  The Kalley 43G200 (`R3_GTV`) turns it back on at every start and boot-looped without its home screen: the switch
-  refuses there.
-- Never turn off an app that saved a Wi-Fi network: Android deletes its networks and Original can't bring them
-  back (`wifiOwners` in `HomeMode`). When the Wi-Fi service doesn't answer, the switch stops on Wi-Fi, and the boot
-  check leaves the setup app and the stock home screen for later.
-- Never commit `config.properties`, `*.keystore` or any key.
-- Never uninstall or clear the data of system apps; only `pm disable-user --user 0`, through `HomeMode`, so
-  *Original* can bring it back.
-- Don't change the TV's picture, sound, network or account settings.
-- Keep the way back working: the *Original* mode and the watchdog.
+- **O boot passa por um app do fabricante** (`com.jm.jmlauncher`, categoria `HOME.JM`, preparado para direct boot) que
+  procura a tela inicial uma vez só, cedo, enquanto o usuário ainda está bloqueado: apps que não são direct-boot-aware
+  não aparecem, ele não acha nenhuma e a animação de boot fica na tela para sempre. Por isso o `HomeReceiver` escuta
+  `LOCKED_BOOT_COMPLETED` (é direct-boot-aware só para isso, sem tocar em arquivos) e agenda `ModeJob.HOME`, que roda
+  `HomeMode.showHomeNow`: se a animação ainda estiver de pé (ou o JmLauncher na frente), pede a tela inicial por ADB.
+  A tela inicial aparece em ~50 s depois de ligar.
+- **`com.htc.htcsettings` salva o Wi-Fi** (`lname` em `dumpsys wifi`) e fica protegido. **`com.master.accessibility`
+  é o mouse do controle** (apps de celular como Netflix e Prime precisam dele): também protegido.
+- A Netflix nunca funciona nesses aparelhos (não são certificados: erro -1001). Não há como contornar sem burlar o
+  DRM, e isso não se faz.
+- O chip esquenta: com 6 câmeras ao vivo chega a 90-99 °C. O cartão de sistema mostra a temperatura.
+
+## O código
+
+- Java 8 de nível de linguagem, minSdk 26 (Android 8), targetSdk 33. Sem Gradle, sem bibliotecas: só o Android SDK.
+  Android 9 e anteriores não têm RenderNode (`Recording` o envolve, com um Picture ali) nem `cmd role`. No Android 8 a
+  11 (`Ui.LEGACY`) a tela inicial pula as camadas de GPU, desenha as sombras borradas a partir de bitmaps em cache
+  (`Shadows`) e arredonda imagens com um shader em vez de clipPath: as GPUs desses aparelhos (a Mali-450 de um Mi Box 3)
+  engasgavam com isso.
+  O Android 11 roda a tela de descanso como `ScreensaverAlone`, no processo principal (a DreamActivity dele precisa do
+  dream no processo padrão do app, sem uma activity de home); `res/values-v30/bools.xml` escolhe isso, todas as outras
+  versões ficam com `Screensaver` em `:home`. Mantenha as duas em sintonia.
+  Para conferir APIs mais novas, compile contra `platforms/android-26/android.jar`: só AGSL (`RuntimeShader`, protegido
+  por um try/catch), `BitmapShader.setFilterMode` (protegido), `Recording.Node` e `Ui.Weighted` (o peso de fonte do
+  Android 9) devem aparecer.
+- A tela inicial é desenhada à mão num único Canvas (`HomeView`); o vidro e o céu são shaders AGSL (`Shaders`, Android
+  13+, com alternativa para 8 a 12). Mantenha em 60 fps: nada de criar objetos no `onDraw`, nada de trabalho na thread
+  da interface.
+- Algumas TVs desenham a interface em 1280×720 num painel 1080p (os modelos TCL de 1 GB:
+  `ro.surface_flinger.max_graphics_width` e `_height`, `ro.config.low_ram`). Ali cada pixel e cada MB contam: o
+  `Backdrop` monta suas imagens no tamanho da interface (e as sugestões usam o w1280 do TMDB), e os logos da barra têm
+  uma cópia no tamanho em repouso e outra no tamanho com foco, para que os dois sejam desenhados pixel a pixel.
+- O `HomeMode` roda toda troca como uma tarefa em segundo plano (`ModeJob`) no processo principal; a interface fica no
+  processo `:home`. O `Watchdog` volta para a tela inicial de fábrica depois de 3 travamentos em 5 minutos.
+  O arquivo de preferências `settings` (`Prefs`) é lido pelos dois processos, e o principal guarda uma cópia em cache
+  que pode sobrescrever o que o `:home` gravou: escolhas que só a tela inicial usa vão em `home-ui`.
+- **Foto de fundo própria:** um arquivo em `Android/data/io.freemytv/files/background.jpg` (envie com `adb push`, de
+  preferência já reduzido para o tamanho da interface) substitui as fotos das sugestões (`Recs.wallpaper`,
+  `Backdrop.wallpaper`). A foto aparece nítida sob um véu, e a coluna da esquerda vira três cartões de vidro
+  (`HomeView.drawColumn`): relógio, clima (sai da gaveta) e sistema (`SystemStats`: memória, processador pelo
+  `/proc/stat` quando legível, temperatura e armazenamento). Fotos pessoais nunca vão para o git.
+- **Câmeras de DVR** (`dvr_cameras`, até 6): `CameraStream` é um cliente RTSP próprio (RTP sobre TCP, Digest, H.264 e
+  H.265) que entrega cada quadro direto ao `MediaCodec`: o `MediaPlayer` do Android trata RTSP como filme e pausa
+  para encher o buffer o tempo todo. `Cameras` é o mosaico (2×2 ou 3×2, com a escolha 4/6 em `home-ui`), focável pelo
+  controle; OK abre `CameraActivity` em tela cheia, no stream principal, com ←/→ para trocar. Uma câmera que não
+  responde vira um quadro escuro e só é tentada de novo em 5 minutos; um substream que não responde cai para o stream
+  principal. As câmeras esperam 150 s desde o boot para começar.
+- Texto na tela: `Ui.tr("English")`, traduzido a partir de `app/assets/i18n/<idioma>.json` (com o inglês como chave;
+  uma busca num HashMap, inglês quando um idioma não tem a frase). Texto montado em tempo de execução é um modelo:
+  `Ui.trf("{n} min ago", "n", 12)`, nunca palavras concatenadas. Uma chave `"contexto|Texto"` é o mesmo inglês onde um
+  idioma pode precisar de outra palavra (`"unit|Automatic"`, `"format|h:mm"` guarda um padrão de SimpleDateFormat).
+  Uma contagem com palavra é `Ui.plural("plural|one:{n} season|other:{n} seasons", n)`: cada catálogo dá uma forma por
+  categoria de plural CLDR do seu idioma (`one`/`few`/`many`/`other` em russo, ucraniano, polonês; só `other` em
+  japonês, chinês…), e as regras da ICU escolhem uma. Português, espanhol, alemão e russo são traduções à mão: a
+  referência, editadas à mão, nunca trocadas por tradução automática. Datas e números usam `Ui.locale()`. Texto
+  desenhado a cada quadro fica em cache e é refeito quando `Ui.generation` muda. Depois de mexer em textos, rode
+  `python3 tools/translate.py`: ele refaz o `en.json` a partir do código e lista o que falta em cada idioma; traduza
+  isso em todos os catálogos (ou `--fill` com `ANTHROPIC_API_KEY`, que manda só as frases), e mantenha os marcadores
+  como estão. Rode `python3 tools/translate.py --check` para validar todos os catálogos sem gravar arquivos.
+  Ainda sem idiomas da direita para a esquerda (o layout não é espelhado); CJK e devanágari usam a fonte do sistema.
+  Comentários no código em inglês, curtos, só onde o porquê não é óbvio.
+- As configurações vêm do `config.properties` pelo `out/gen/io/freemytv/Config.java` gerado (nunca edite esse).
+  O que a pessoa muda na TV (`Prefs`: Home Settings, Shelf, Remote Buttons) vale mais que esses valores iniciais.
+- Os botões de app do controle (`RemoteKeys`, `RemoteKeyService`) usam os códigos de tecla de cada marca: só rodam em
+  TVs TCL, Vestel, KTC (NextStar) e Sony e em projetores Formovie, o serviço só fica ligado no modo Free My TV, e
+  *Original* o tira dos serviços de acessibilidade ativos. O sistema espera o serviço a cada tecla, então ele vive
+  sozinho no processo `:keys`: o que ele lê fica em `remote-keys.txt` (`Prefs.keyApp`), nunca em SharedPreferences, e
+  o `onKeyEvent` não faz trabalho pesado.
+  A Vestel (F&U e outras marcas de loja; MediaTek, Android TV 14 testado) mapeia o botão Netflix para `KEYCODE_STEM_1`,
+  uma tecla global (`dumpsys window policy` lista essas) que o filtro de teclas vê primeiro; os botões YouTube, Prime
+  Video e Google Play ficam com o sistema. As listas de fábrica não precisaram de entradas Vestel.
+  A KTC (NextStar; MediaTek, Google TV 14 testado) mapeia o botão Tabii para `KEYCODE_BUTTON_8`, também uma tecla
+  global, com a qual o receptor de atalhos da própria KTC abriria o Tabii; os botões Netflix, YouTube e Prime Video
+  ficam com o sistema.
+  A Sony (BRAVIA VH22, Android TV 12 testado) manda `KEYCODE_BUTTON_9` para os botões BRAVIA CORE, Disney+, Prime
+  Video, YouTube e Crunchyroll, `KEYCODE_BUTTON_4` para a Netflix e `KEYCODE_BUTTON_8` para o botão Google Play de
+  controles mais antigos (BRAVIA 4K UR3, Android 10 testado), teclas globais de `com.sony.dtv.sonyvendorservice`;
+  só o scan code diferencia uma da outra, então o `Prefs` as guarda como `SONY_KEY` + scan code. "Sony default"
+  (vazio) deixa a tecla para a TV. A Sony tem seu próprio build do Apple TV, `com.apple.atve.sony.appletv`.
+  Projetores Xiaomi feitos pela Formovie (Fengmi; L1, MediaTek, Google TV 14 testado) mandam o mesmo `KEYCODE_STEM_1`
+  para a Netflix (`RemoteKeys.STEM_NETFLIX`); o botão YouTube vai para o `GlobalKeyReceiver` da MediaTek e fica com o
+  sistema.
+- Depois de qualquer mudança, `./build.sh` tem que terminar com `Built FreeMyTV.apk`.
+- LG e Samsung (`web/`): JavaScript ES5 puro e CSS sem variáveis, grid ou backdrop-filter, porque TVs mais antigas
+  (webOS 3 e 4, Tizen 3) rodam um Chromium de 2015 a 2017; só transform e opacity animam. `web/tv.js` é o lado da TV:
+  na LG, Luna (`listLaunchPoints`, `launch`, as entradas; onde o webOS 6 e mais novos negam `listLaunchPoints` a apps
+  do Modo Desenvolvedor, a lista vem da API de controle remoto da TV em `ws://127.0.0.1:3000` depois que a TV permitiu
+  (ela pergunta uma vez; um "não" não é perguntado de novo), e até lá do `getAppLoadStatus` sobre uma lista de ids de
+  apps conhecidos, que mostra os nomes sem ícones); na Samsung, `tizen.application` (`getAppsInfo`, `launch`), a
+  propriedade `VIDEOSOURCE` e `tizen.tvwindow.setSource` para as entradas, depois o visualizador da Samsung
+  (`org.tizen.tv-viewer`) para mostrá-las. Os dados da própria Samsung não são confiáveis: no Tizen 3 nenhum
+  `iconPath` de app carrega (no Tizen 4 e 5, os do YouTube e do Prime Video são genéricos), então os logos vêm junto
+  em `web/icons/`, indexados pelo id do app em `SAMSUNG_ICONS` (SVGs precisam de largura e altura para o WebKit
+  antigo); alguns nomes vêm vazios ou longos (`SAMSUNG_TITLES`); e o Tizen 3 não responde a nenhum app control de
+  "settings", então Configurações da TV abre `org.tizen.menu`. O `web/home.js` segue o layout e o comportamento do
+  `HomeView`, então uma mudança de design no Android vale lá também. Textos: os mesmos catálogos do Android, empacotados
+  em `i18n.js` pelo `tools/webapp.py` (só as chaves que o `web/` usa): `tr('Live TV')`, `trf('{n} min ago', {n: 12})`,
+  `plural('plural|…', n)` e `formatDate('format|h:mm a', at)` (o padrão SimpleDateFormat do catálogo, escrito pelo
+  `web/strings.js`), e o `tools/translate.py` lê essas chamadas também. Compilado sem cidade (`--generic`), o
+  `web/zones.js` (`tools/make_zones.py`, a partir da base de fusos horários) transforma o fuso da TV em cidade, moeda e
+  região. O `tools/webapp.py` é o que os dois builds compartilham. Prévia: `python3 webos/build.py --preview` (ou
+  `tizen/build.py`), depois abra `out/webos/index.html` num navegador (uma versão de mentira lista apps de exemplo).
+
+## Sempre
+
+- O app de configuração inicial do Google TV (`setupwraith`) é desligado antes da tela inicial de fábrica e volta
+  depois dela, em todo lugar (ordem dos `targets`, `applyOriginal`, `revertHomeNow`, `verifyNow`): com a tela inicial
+  desligada e ele ligado, a RecoveryActivity dele toma o Home, e um reinício ali resetou um Xiaomi para o padrão de
+  fábrica. Se ele não puder ser desligado, a tela inicial fica ligada.
+  A Kalley 43G200 (`R3_GTV`) religa ele a cada inicialização e entrou em loop de boot sem a tela inicial dela: a troca
+  se recusa ali.
+- Nunca desligue um app que salvou uma rede Wi-Fi: o Android apaga as redes dele e o *Original* não consegue trazer de
+  volta (`wifiOwners` em `HomeMode`). Quando o serviço de Wi-Fi não responde, a troca para no Wi-Fi, e a verificação
+  do boot deixa o app de configuração inicial e a tela inicial de fábrica para depois.
+- Nunca faça commit de `config.properties`, `*.keystore`, nenhuma chave, senha de DVR ou foto pessoal.
+- Nunca desinstale nem apague os dados de apps de sistema; só `pm disable-user --user 0`, pelo `HomeMode`, para que o
+  *Original* possa trazer de volta.
+- Não mexa nas configurações de imagem, som, rede ou conta da TV.
+- Mantenha o caminho de volta funcionando: o modo *Original* e o watchdog.
+- Nunca ajude a burlar DRM ou certificação de serviços de streaming.

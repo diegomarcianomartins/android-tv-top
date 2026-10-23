@@ -1,5 +1,6 @@
-# Free My TV: guide for AI assistants
+# Free My TV: guia para assistentes de IA
 
-The full guide is [CLAUDE.md](CLAUDE.md): read it first and follow it (it is written for any assistant, not only
-Claude Code). Most people ask in plain words, like "Install Free My TV on my TV at 192.168.1.50. I live in Lisbon.",
-and don't know what a terminal is: explain each step simply, and ask before anything that changes their TV or computer.
+O guia completo é o [CLAUDE.md](CLAUDE.md): leia primeiro e siga (ele foi escrito para qualquer assistente, não só o
+Claude Code). A maioria das pessoas pede com palavras simples, como "Instale o Free My TV na minha TV no
+192.168.1.50. Moro em Lisboa.", e não sabe o que é um terminal: explique cada passo de forma simples, e pergunte antes
+de qualquer coisa que mude a TV ou o computador delas.
