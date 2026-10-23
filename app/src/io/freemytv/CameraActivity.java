@@ -130,7 +130,7 @@ public final class CameraActivity extends Activity {
 
         @Override public void onSurfaceTextureAvailable(SurfaceTexture t, int w, int h) {
             if (stopped || !resumed) return;
-            stream = new CameraStream(urls.get(index), true, index, t, this);
+            stream = new CameraStream(urls.get(index), true, false, index, t, this);
         }
 
         @Override public void onSurfaceTextureSizeChanged(SurfaceTexture t, int w, int h) {}

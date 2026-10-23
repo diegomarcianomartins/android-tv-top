@@ -2,6 +2,8 @@ package io.freemytv;
 
 import android.graphics.SurfaceTexture;
 import android.media.MediaCodec;
+import android.media.MediaCodecInfo;
+import android.media.MediaCodecList;
 import android.media.MediaFormat;
 import android.os.Build;
 import android.util.Base64;
@@ -63,6 +65,7 @@ final class CameraStream implements Runnable {
 
     // Video
     private boolean hevc;
+    private final boolean software;
     private byte[] vps, sps, pps;
     private MediaCodec codec;
     private Surface surface;
@@ -74,14 +77,16 @@ final class CameraStream implements Runnable {
     private long liveAt;
 
     CameraStream(String url, int index, SurfaceTexture texture, Listener listener) {
-        this(url, false, index, texture, listener);
+        this(url, false, false, index, texture, listener);
     }
 
     /**
      * `url`: rtsp://user:password@host:port/path (a substream). The password never goes to the log. With `preferMain`
      * the main stream is tried first and the substream follows it (a TV with no H.265 decoder: a TCL on Android 9).
+     * With `software` it decodes on the processor, leaving the TV's few hardware decoders to the app in front.
      */
-    CameraStream(String url, boolean preferMain, int index, SurfaceTexture texture, Listener listener) {
+    CameraStream(String url, boolean preferMain, boolean software, int index, SurfaceTexture texture, Listener listener) {
+        this.software = software;
         String main = CameraActivity.mainStream(url);
         urls = main.equals(url) ? new String[] {url} : preferMain ? new String[] {main, url} : new String[] {url, main};
         label = "camera " + (index + 1);
@@ -588,7 +593,9 @@ final class CameraStream implements Runnable {
         f.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 1024 * 1024);
         if (Build.VERSION.SDK_INT >= 30) f.setInteger(MediaFormat.KEY_LOW_LATENCY, 1);
         try {
-            codec = MediaCodec.createDecoderByType(mime);
+            String name = software ? softwareDecoder(mime) : null;
+            codec = name != null ? MediaCodec.createByCodecName(name) : MediaCodec.createDecoderByType(mime);
+            if (name != null) AppLog.w(label + ": decoding on the processor (" + name + ")");
             codec.configure(f, surface, null, 0);
             codec.start();
         } catch (IOException | RuntimeException e) {
@@ -596,6 +603,17 @@ final class CameraStream implements Runnable {
             codec = null;
             throw new IOException("no decoder for " + mime + ": " + e.getMessage());
         }
+    }
+
+    /** Android's own decoder for `mime` (it runs on the processor), or null. */
+    private static String softwareDecoder(String mime) {
+        for (MediaCodecInfo info : new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos()) {
+            if (info.isEncoder()) continue;
+            String name = info.getName();
+            if (!name.startsWith("OMX.google.") && !name.startsWith("c2.android.")) continue;
+            for (String type : info.getSupportedTypes()) if (type.equalsIgnoreCase(mime)) return name;
+        }
+        return null;
     }
 
     private static byte[] annexB(byte[]... units) {

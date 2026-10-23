@@ -2,6 +2,9 @@ package io.freemytv;
 
 import android.app.ActivityManager;
 import android.content.Context;
+import android.net.wifi.SupplicantState;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
@@ -15,8 +18,8 @@ import java.io.FileReader;
 import java.io.IOException;
 
 /**
- * Memory, processor and storage for the home screen's system card, measured every 3 s on a background thread while
- * the home screen shows. The processor's use comes from /proc/stat, which Android 8+ hides from apps on most TVs
+ * Memory, processor, storage and Wi-Fi signal for the home screen's system card, measured every 3 s on a background
+ * thread while the home screen shows. The processor's use comes from /proc/stat, which Android 8+ hides from apps on most TVs
  * (SELinux): then it is read through the TV's own ADB, in Free My TV mode. Values are -1 when unknown.
  */
 final class SystemStats {
@@ -34,6 +37,8 @@ final class SystemStats {
     volatile int memory = -1, cpu = -1, storage = -1;     // percent used
     volatile int temperature = -1;                          // °C
     volatile String memoryUse = "", storageUse = "";     // "used / total"
+    volatile int wifi = -1;                                 // signal, percent; -1 off Wi-Fi
+    volatile String wifiUse = "";                           // link speed
 
     SystemStats(Context c, Runnable onChange) {
         context = c.getApplicationContext();
@@ -88,6 +93,23 @@ final class SystemStats {
         }
         cpu = cpuUse();
         temperature = cpuTemperature();
+        wifi();
+    }
+
+    private void wifi() {
+        int level = -1;
+        String speed = "";
+        try {
+            WifiManager wm = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            WifiInfo w = wm == null ? null : wm.getConnectionInfo();
+            if (w != null && w.getSupplicantState() == SupplicantState.COMPLETED && w.getRssi() > -127) {
+                level = WifiManager.calculateSignalLevel(w.getRssi(), 101);
+                if (w.getLinkSpeed() > 0) speed = w.getLinkSpeed() + " Mbps";
+            }
+        } catch (RuntimeException ignored) {
+        }
+        wifi = level;
+        wifiUse = speed;
     }
 
     private String usedOfTotal(long used, long total) {

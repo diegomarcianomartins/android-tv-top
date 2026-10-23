@@ -129,9 +129,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final SystemStats stats;
     /** Their own photo is the background: the left column (clock, weather, system) instead of the bare clock. */
     private boolean ownColumn;
-    private final String[] statsText = new String[6];   // memory, processor, storage values; then their details
-    private final int[] statsValues = {-1, -1, -1};
-    private Paint colTitle, colBig, colText, colDim, colHour, colHourTemp, colValue;
+    private final String[] statsText = new String[8];   // memory, processor, storage, Wi-Fi values; then their details
+    private final int[] statsValues = {-1, -1, -1, -1};
+    private Paint colTitle, colBig, colText, colDim, colHour, colHourTemp, colValue, sysTitle, sysValue, sysDim;
     private int zone = Z_SHELF;
     private int camIndex, camChoice;   // the focused camera; the focused choice above the grid (4, 6, off)
 
@@ -642,6 +642,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         colHourTemp = Ui.numbers(Ui.semibold, 23 * k, 0xF2FFFFFF);
         colHourTemp.setTextAlign(Paint.Align.CENTER);
         colValue = Ui.numbers(Ui.semibold, 40 * k, 0xFFFFFFFF);
+        sysTitle = Ui.text(Ui.semibold, 19 * k, 0xB3FFFFFF);
+        sysValue = Ui.numbers(Ui.semibold, 36 * k, 0xFFFFFFFF);
+        sysDim = Ui.numbers(Ui.medium, 18 * k, 0xB3FFFFFF);
         lightGradient = null;
         buttonPaint = Ui.text(Ui.semibold, 29 * k, INK);
         capsuleText = Ui.numbers(Ui.medium, 29 * k, 0xF2FFFFFF);
@@ -3026,29 +3029,43 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
     }
 
-    /** Memory, processor and storage: how much is in use, a bar, and used / total (the processor: its temperature). */
+    /**
+     * Memory, processor, storage and Wi-Fi: how much is in use (the signal, for Wi-Fi), a bar, and a detail (used /
+     * total; the processor's temperature; the Wi-Fi link speed).
+     */
     private void drawColumnSystem(Canvas c) {
         columnCard(c, COL_SYS_T, COL_SYS_B);
-        float left = (COL_L + 30) * k, right = (COL_R - 30) * k, gap = 28 * k, w = (right - left - 2 * gap) / 3;
+        float left = (COL_L + 30) * k, right = (COL_R - 30) * k, gap = 22 * k, w = (right - left - 3 * gap) / 4;
         float top = COL_SYS_T * k;
         int[] values = statsValues;
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 4; i++) {
             float x = left + i * (w + gap);
-            c.drawText(i == 0 ? Ui.tr("Memory") : i == 1 ? Ui.tr("Processor") : Ui.tr("Storage"), x, top + 40 * k, colTitle);
-            c.drawText(statsText[i], x - Ui.leftBearing(colValue, statsText[i]), top + 88 * k, colValue);
+            String title = i == 0 ? Ui.tr("Memory") : i == 1 ? Ui.tr("Processor") : i == 2 ? Ui.tr("Storage") : "Wi-Fi";
+            drawFit(c, title, x, top + 40 * k, sysTitle, w);
+            drawFit(c, statsText[i], x - Ui.leftBearing(sysValue, statsText[i]), top + 86 * k, sysValue, w);
             float barTop = top + 104 * k, barH = 8 * k;
             fill.setShader(null);
             fill.setColor(0x33FFFFFF);
             c.drawRoundRect(x, barTop, x + w, barTop + barH, barH / 2, barH / 2, fill);
             if (values[i] > 0) {
-                fill.setColor(values[i] >= 85 ? 0xFFFF9F0A : 0xE6FFFFFF);
+                // Orange: memory, processor or storage nearly full, or a weak Wi-Fi signal.
+                boolean warn = i == 3 ? values[i] < 35 : values[i] >= 85;
+                fill.setColor(warn ? 0xFFFF9F0A : 0xE6FFFFFF);
                 c.drawRoundRect(x, barTop, x + w * values[i] / 100f, barTop + barH, barH / 2, barH / 2, fill);
             }
-            boolean hot = i == 1 && !statsText[4].isEmpty() && stats.temperature >= 85;
-            colDim.setColor(hot ? 0xFFFF9F0A : 0xB3FFFFFF);
-            c.drawText(statsText[3 + i], x, top + 142 * k, colDim);
-            colDim.setColor(0xB3FFFFFF);
+            boolean hot = i == 1 && !statsText[5].isEmpty() && stats.temperature >= 85;
+            sysDim.setColor(hot ? 0xFFFF9F0A : 0xB3FFFFFF);
+            drawFit(c, statsText[4 + i], x, top + 140 * k, sysDim, w);
+            sysDim.setColor(0xB3FFFFFF);
         }
+    }
+
+    /** Text that shrinks to fit `width` (a long translation, "2,7 GB / 4,6 GB"). */
+    private static void drawFit(Canvas c, String text, float x, float y, Paint p, float width) {
+        float size = p.getTextSize(), tw = p.measureText(text);
+        if (tw > width) p.setTextSize(size * width / tw);
+        c.drawText(text, x, y, p);
+        p.setTextSize(size);
     }
 
     /** New measurements (main thread): their texts, made here and not while drawing. */
@@ -3057,10 +3074,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         values[0] = stats.memory;
         values[1] = stats.cpu;
         values[2] = stats.storage;
-        for (int i = 0; i < 3; i++) statsText[i] = values[i] < 0 ? "–" : values[i] + "%";
-        statsText[3] = stats.memoryUse;
-        statsText[4] = stats.temperature < 0 ? "" : stats.temperature + " °C";
-        statsText[5] = stats.storageUse;
+        values[3] = stats.wifi;
+        for (int i = 0; i < 4; i++) statsText[i] = values[i] < 0 ? "–" : values[i] + "%";
+        statsText[4] = stats.memoryUse;
+        statsText[5] = stats.temperature < 0 ? "" : stats.temperature + " °C";
+        statsText[6] = stats.storageUse;
+        statsText[7] = stats.wifiUse;
         if (!ownColumn) return;
         heroDirty = true;
         heroLayer.invalidate();
