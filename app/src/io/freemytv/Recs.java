@@ -139,6 +139,65 @@ final class Recs {
         }
     }
 
+    // MARK: - The person's own background photo
+
+    /** Their photo, sent from the computer into the app's folder (Android/data/io.freemytv/files): it replaces the picks' photos. */
+    static final String WALLPAPER = "background.jpg";
+    private File wallpaperFile;
+    private Backdrop wallpaper;
+    private long wallpaperStamp;        // lastModified of the file it was built from (0: none)
+    private boolean wallpaperPending;
+    private volatile boolean wallpaperSet;
+
+    /** Whether a photo of their own is there (even while it's still being built). */
+    boolean wallpaperSet() { return wallpaperSet; }
+
+    /** Their background, or null (none, or not built yet: the listeners hear when it's ready). Not for onDraw. */
+    Backdrop wallpaper() {
+        if (wallpaperFile == null) {
+            File dir = context.getExternalFilesDir(null);
+            if (dir == null) return null;
+            wallpaperFile = new File(dir, WALLPAPER);
+        }
+        final long stamp = wallpaperFile.lastModified();
+        synchronized (images) {
+            wallpaperSet = stamp != 0;
+            if (stamp == 0) {
+                wallpaper = null;
+                wallpaperStamp = 0;
+                return null;
+            }
+            if (stamp == wallpaperStamp || wallpaperPending) return wallpaper;
+            wallpaperPending = true;
+        }
+        final File f = wallpaperFile;
+        io.execute(() -> {
+            Backdrop built = null;
+            try {
+                BitmapFactory.Options bounds = new BitmapFactory.Options();
+                bounds.inJustDecodeBounds = true;
+                BitmapFactory.decodeFile(f.getPath(), bounds);
+                BitmapFactory.Options opts = new BitmapFactory.Options();
+                opts.inSampleSize = 1;
+                while (bounds.outWidth / (opts.inSampleSize * 2) >= Backdrop.W
+                        && bounds.outHeight / (opts.inSampleSize * 2) >= Backdrop.H) opts.inSampleSize *= 2;
+                Bitmap b = BitmapFactory.decodeFile(f.getPath(), opts);
+                if (b == null) throw new IOException("unreadable image");
+                built = Backdrop.wallpaper(b);
+                AppLog.w("own background: " + bounds.outWidth + "×" + bounds.outHeight);
+            } catch (IOException | RuntimeException | OutOfMemoryError e) {
+                AppLog.w("own background: " + e.getMessage());
+            }
+            synchronized (images) {
+                wallpaper = built;
+                wallpaperStamp = stamp;     // a broken file isn't retried until it changes
+                wallpaperPending = false;
+            }
+            notifyListeners();
+        });
+        return wallpaper;
+    }
+
     void addListener(Listener l) { if (!listeners.contains(l)) listeners.add(l); }
     void removeListener(Listener l) { listeners.remove(l); }
 

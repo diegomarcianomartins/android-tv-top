@@ -102,7 +102,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private static String[] tabs;
     private static int tabsGeneration = -1;
     private static final String[] TAB_KIND = {null, "movie", "tv"};
-    private static final int Z_TOP = 4, Z_CARDS = 5;
+    private static final int Z_TOP = 4, Z_CARDS = 5, Z_CAMS = 6, Z_CAMGRID = 7;
 
     private final Activity activity;
     private final Scene scene = new Scene();
@@ -125,7 +125,15 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     });
     private final RectF a11yRect = new RectF();
     private final Layer sky, heroLayer, status, platter, tiles, drawerLayer, sheetLayer, toastLayer;
+    private final Cameras cameras;      // the DVR's live cameras, on the right (only without the picks)
+    private final SystemStats stats;
+    /** Their own photo is the background: the left column (clock, weather, system) instead of the bare clock. */
+    private boolean ownColumn;
+    private final String[] statsText = new String[6];   // memory, processor, storage values; then their details
+    private final int[] statsValues = {-1, -1, -1};
+    private Paint colTitle, colBig, colText, colDim, colHour, colHourTemp, colValue;
     private int zone = Z_SHELF;
+    private int camIndex, camChoice;   // the focused camera; the focused 4-or-6 choice
 
     // Night look (like Apple's "Automatic" appearance): darker from sunset to sunrise, with a 2 s transition.
     private static final long NIGHT_MS = 2000;
@@ -376,12 +384,15 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         drawerLayer = new Layer(a, DRAWER);
         sheetLayer = new Layer(a, SHEET);
         toastLayer = new Layer(a, TOAST);
+        cameras = new Cameras(a);
+        stats = new SystemStats(a, this::onStats);
+        java.util.Arrays.fill(statsText, "");
         // Hardware layers on the GPU: only the one that changed is redrawn; moving, fading and scaling stay cheap.
         // Not on Android 8 to 11: on older GPUs (a Mi Box 3's Mali-450) redrawing and compositing a big layer on every
         // frame cost more than drawing straight to the screen (measured: focus on the picks 33 → 12 ms a frame, the
         // drawer 19 → 17 ms).
         for (View v : new View[] {heroLayer, status, platter, tiles, drawerLayer, sheetLayer}) v.setLayerType(Ui.LEGACY ? LAYER_TYPE_NONE : LAYER_TYPE_HARDWARE, null);
-        for (View v : new View[] {sky, heroLayer, status, platter, tiles, drawerLayer, sheetLayer, toastLayer}) {
+        for (View v : new View[] {sky, heroLayer, cameras, status, platter, tiles, drawerLayer, sheetLayer, toastLayer}) {
             v.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);   // TalkBack reads the items (Spoken)
             addView(v);
         }
@@ -430,6 +441,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (!again) reload();
         updatePalette();
         updatePicks();
+        if (ownColumn) stats.start();
+        if (cameras.any()) {
+            cameras.setVisibility(picksOn() ? GONE : VISIBLE);
+            if (!picksOn()) cameras.start();
+        }
         if (sheetOpen) closeSheet();
         sheet.snap(sheet.target);
         motionDirty = true;
@@ -451,6 +467,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         data.removeListener(this);
         recs.removeListener(this);
         if (tvInputs != null) tvInputs.unregisterCallback(inputCallback);
+        cameras.stop();
+        stats.stop();
     }
 
     void destroy() {
@@ -539,6 +557,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         measure(drawerLayer, width, Math.round(600 * kk));
         measure(sheetLayer, width, height);
         measure(toastLayer, Math.round(1000 * kk), Math.round(220 * kk));
+        measure(cameras, Math.round(1116 * kk), Math.round((cameras.hasChoice() ? 728 : 652) * kk));
         setMeasuredDimension(width, height);
     }
 
@@ -559,6 +578,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         sheetLayer.setPivotX(width / 2f);
         sheetLayer.setPivotY(height / 2f);
         place(toastLayer, (width - toastLayer.getMeasuredWidth()) / 2, 0);
+        place(cameras, Math.round((CONTENT_R + 18) * kk) - cameras.getMeasuredWidth(), Math.round((cameras.hasChoice() ? 74 : 150) * kk));
     }
 
     private static void place(View v, int x, int y) {
@@ -611,6 +631,15 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         lClock.setLetterSpacing(-0.01f);
         lWeather = Ui.text(Ui.medium, 34 * k, L_DIM);
         lClockQuote = Ui.numbers(Ui.medium, 28 * k, L_DIM);
+        colTitle = Ui.text(Ui.semibold, 22 * k, 0xB3FFFFFF);
+        colBig = Ui.numbers(Ui.light, 62 * k, 0xFFFFFFFF);
+        colText = Ui.text(Ui.semibold, 24 * k, 0xF2FFFFFF);
+        colDim = Ui.numbers(Ui.medium, 21 * k, 0xB3FFFFFF);
+        colHour = Ui.numbers(Ui.medium, 20 * k, 0xB3FFFFFF);
+        colHour.setTextAlign(Paint.Align.CENTER);
+        colHourTemp = Ui.numbers(Ui.semibold, 23 * k, 0xF2FFFFFF);
+        colHourTemp.setTextAlign(Paint.Align.CENTER);
+        colValue = Ui.numbers(Ui.semibold, 40 * k, 0xFFFFFFFF);
         lightGradient = null;
         buttonPaint = Ui.text(Ui.semibold, 29 * k, INK);
         capsuleText = Ui.numbers(Ui.medium, 29 * k, 0xF2FFFFFF);
@@ -733,6 +762,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float lift = -d * shift;
         show(heroLayer, top, lift);
         show(status, top, lift);
+        // The cameras fade with the hero (not hidden: their streams keep their place while the drawer is open).
+        cameras.setAlpha(top);
+        cameras.setTranslationY(lift);
         show(platter, home, lift);
         show(tiles, home, lift);
         float da = home * smoothstep(0.1f, 0.6f, dc);
@@ -839,7 +871,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         pickIndex = next;
         heroSlide = dir;
         refreshHero(true);
-        Backdrop b = recs.backdrop(currentPick());
+        Backdrop b = recs.wallpaperSet() ? null : recs.backdrop(currentPick());
         if (b != null) showBackdrop(b);
         spoken.focusMoved();
         return true;
@@ -1474,7 +1506,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             x += tw + gap;
         }
         float cardsTop = CARDS_TOP * k, split = left + (right - left) * 0.585f;
-        boolean wx = Prefs.weather(), qt = Prefs.quotes() && HomeData.active().length > 0;
+        boolean wx = weatherInDrawer(), qt = Prefs.quotes() && HomeData.active().length > 0;
         // A card that is off gives its room to the other one.
         weatherCard.set(left, cardsTop, qt ? split - 16 * k : right, cardsTop + CARDS_H * k);
         quotesCard.set(wx ? split + 16 * k : left, cardsTop, right, cardsTop + CARDS_H * k);
@@ -1517,6 +1549,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (dk > 0.001f) scene.glass(c, r, radius, SMOKE, 0.4f, 0, 0, 0.02f, 1, dk);
     }
 
+    /** With their own photo the weather lives on the home screen, under the clock (drawColumn), not in the drawer. */
+    private boolean weatherInDrawer() {
+        return Prefs.weather() && !ownColumn;
+    }
+
     private void drawerCard(Canvas c, RectF r) {
         drawerGlass(c, r, 30 * k, 0.72f, 0x1A000000, 10 * k);
     }
@@ -1539,7 +1576,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         for (int i = 0; i < drawerItems.size(); i++) if (drawerFocus[i].value > 0.02f && (top < 0 || drawerFocus[i].value > drawerFocus[top].value)) top = i;
         for (int i = 0; i < drawerItems.size(); i++) if (i != top) drawDrawerTile(c, i);
         if (top >= 0) drawDrawerTile(c, top);
-        if (Prefs.weather()) drawWeatherCard(c, weatherCard);
+        if (weatherInDrawer()) drawWeatherCard(c, weatherCard);
         if (Prefs.quotes() && HomeData.active().length > 0) drawQuotesCard(c, quotesCard);
     }
 
@@ -1734,6 +1771,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         heroFocus.target = !sheetOpen && zone == Z_HERO ? 1 : 0;
         if (snap) heroFocus.snap(heroFocus.target);
         boolean topChanged = aim(topFocus, !sheetOpen && zone == Z_TOP ? topIndex : -1, snap);
+        cameras.setFocus(!sheetOpen && zone == Z_CAMS ? camIndex : -1, !sheetOpen && zone == Z_CAMGRID ? camChoice : -1);
         heroChanged |= aim(cardFocus, !sheetOpen && zone == Z_CARDS ? cardIndex : -1, snap) | topChanged;
         statusChanged |= topChanged;
         tilesDirty |= snap || tilesChanged;
@@ -2226,6 +2264,17 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             }
             it = lightButtons.get(topIndex - 3);
             r = topRects[topIndex];
+        } else if (zone == Z_CAMS) {
+            click.open();
+            CameraActivity.open(getContext(), camIndex);
+            return;
+        } else if (zone == Z_CAMGRID) {
+            if (camChoice == cameras.choice()) return;
+            click.move();
+            cameras.choose(camChoice);
+            camIndex = Math.min(camIndex, cameras.count() - 1);
+            requestLayout();
+            return;
         } else if (zone == Z_CARDS) {
             Recs.Pick p = cardIndex < cards.size() ? cards.get(cardIndex) : null;
             if (p == null || p.pkg == null) return;
@@ -2512,7 +2561,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         for (int i = 0; i < Math.min(3, cards.size()); i++) out.add(a11yId(Z_CARDS, i));
         for (int i = 0; i < shelf.size(); i++) out.add(a11yId(Z_SHELF, i));
         for (int i = 0; i < drawerItems.size(); i++) out.add(a11yId(Z_DRAWER, i));
-        if (drawerOpen && Prefs.weather()) out.add(a11yId(WIDGETS, 0));
+        if (drawerOpen && weatherInDrawer()) out.add(a11yId(WIDGETS, 0));
         if (drawerOpen && Prefs.quotes() && HomeData.active().length > 0) out.add(a11yId(WIDGETS, 1));
     }
 
@@ -2607,7 +2656,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private List<Integer> widgets() {
         List<Integer> out = new ArrayList<>();
         if (!drawerOpen) return out;
-        if (Prefs.weather()) out.add(0);
+        if (weatherInDrawer()) out.add(0);
         if (Prefs.quotes() && HomeData.active().length > 0) out.add(1);
         return out;
     }
@@ -2751,8 +2800,18 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             }
         }
         for (Recs.Pick p : recs.wanted()) recs.backdrop(p);   // all three tabs preloaded: switching tabs is instant
-        Backdrop b = cards.isEmpty() ? null : recs.backdrop(cards.get(0));
-        if (cards.isEmpty() || b != null) showBackdrop(b);
+        Backdrop own = recs.wallpaper();
+        if (recs.wallpaperSet() != ownColumn) {
+            ownColumn = recs.wallpaperSet();
+            if (ownColumn && running) stats.start(); else stats.stop();
+            layoutDrawer();
+        }
+        if (recs.wallpaperSet()) {
+            if (own != null) showBackdrop(own);
+        } else {
+            Backdrop b = cards.isEmpty() ? null : recs.backdrop(cards.get(0));
+            if (cards.isEmpty() || b != null) showBackdrop(b);
+        }
         heroDirty = true;
         spoken.focusMoved();    // new picks under the focused card
     }
@@ -2799,6 +2858,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private void drawLightImage(Canvas c, Backdrop b, float alpha) {
+        if (b.photo != null) {
+            // Their own photo, sharp, under a veil (light by day, dark at night) that keeps the text readable.
+            drawImage(c, b.photo, alpha);
+            fill.setShader(null);
+            fill.setColor(Ui.alpha(tone(0xFFF5F5F7, 0xFF000000), alpha * tone(0.45f, 0.5f)));
+            c.drawRect(screen, fill);
+            return;
+        }
         if (night < 0.999f || b.nightImage == null) drawImage(c, b.lightImage, alpha);
         if (night > 0.001f) drawImage(c, b.nightImage, alpha * night);
     }
@@ -2849,11 +2916,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private void drawClock(Canvas c) {
         float x = MARGIN * k;
-        c.drawText(dateText, x - Ui.leftBearing(lDate, dateText), L_DATE_BASE * k, lDate);
-        c.drawText(clockText, x - Ui.leftBearing(lClock, clockText), L_CLOCK_BASE * k, lClock);
         HomeData.Weather wx = data.weather;
-        if (!Prefs.weather() || Double.isNaN(wx.temp)) return;
-        if (data.weatherAt != weatherLineAt || Prefs.version != weatherLinePrefs || !Ui.language.equals(weatherLineLanguage)) {
+        boolean weather = Prefs.weather() && !Double.isNaN(wx.temp);
+        if (weather && (data.weatherAt != weatherLineAt || Prefs.version != weatherLinePrefs || !Ui.language.equals(weatherLineLanguage))) {
             weatherLineAt = data.weatherAt;
             weatherLinePrefs = Prefs.version;
             weatherLineLanguage = Ui.language;
@@ -2861,10 +2926,130 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     + HomeData.highLow(wx, "  ");
         }
         float size = 40 * k, base = L_WEATHER_BASE * k;
+        String symbol = weather ? Symbols.weather(wx.code, wx.isDay) : null;
+        float sw = weather ? Symbols.width(getContext(), symbol, size) : 0;
+        boolean own = bgTo != null && bgTo.photo != null;
+        if (own && ownColumn) {
+            drawColumn(c);
+            return;
+        }
+        if (own) {
+            // On their own photo: white, heavier text on a faint smoked glass, so it reads over any picture.
+            lClock.setTypeface(Ui.displaySemibold);
+            lWeather.setTypeface(Ui.semibold);
+            lDate.setColor(0xF2FFFFFF);
+            lClock.setColor(0xFFFFFFFF);
+            lWeather.setColor(0xE6FFFFFF);
+            float right = Math.max(lDate.measureText(dateText), lClock.measureText(clockText));
+            if (weather) right = Math.max(right, sw + 16 * k + lWeather.measureText(weatherLine));
+            tmp.set(x - 44 * k, L_DATE_BASE * k - 2 * Ui.halfCap(lDate) - 40 * k, x + right + 48 * k,
+                    (weather ? base : L_CLOCK_BASE * k) + 38 * k);
+            scene.glass(c, tmp, 40 * k, SMOKE, tone(0.22f, 0.26f), 0, 0, 0.005f, 1, 0.8f);
+        }
+        c.drawText(dateText, x - Ui.leftBearing(lDate, dateText), L_DATE_BASE * k, lDate);
+        c.drawText(clockText, x - Ui.leftBearing(lClock, clockText), L_CLOCK_BASE * k, lClock);
+        if (weather) {
+            Symbols.draw(getContext(), c, symbol, x + sw / 2, base - Ui.halfCap(lWeather), size, lWeather.getColor());
+            c.drawText(weatherLine, x + sw + 16 * k, base, lWeather);
+        }
+        if (own) {
+            lClock.setTypeface(Ui.light);
+            lWeather.setTypeface(Ui.medium);
+        }
+    }
+
+    // MARK: - Left column (with their own photo): clock, weather and system, on faint smoked glass
+
+    /** The column's cards, in 1920-wide units: lined up with the camera grid's top and bottom. */
+    private static final float COL_L = 40, COL_R = 712, COL_CLOCK_T = 92, COL_CLOCK_B = 382, COL_WX_T = 400,
+            COL_WX_B = 598, COL_SYS_T = 616, COL_SYS_B = 784;
+
+    private void drawColumn(Canvas c) {
+        float x = MARGIN * k;
+        lClock.setTypeface(Ui.displaySemibold);
+        lDate.setColor(0xF2FFFFFF);
+        lClock.setColor(0xFFFFFFFF);
+        columnCard(c, COL_CLOCK_T, COL_CLOCK_B);
+        c.drawText(dateText, x - Ui.leftBearing(lDate, dateText), (COL_CLOCK_T + 70) * k, lDate);
+        c.drawText(clockText, x - Ui.leftBearing(lClock, clockText), (COL_CLOCK_B - 52) * k, lClock);
+        lClock.setTypeface(Ui.light);
+        if (Prefs.weather()) drawColumnWeather(c);
+        drawColumnSystem(c);
+    }
+
+    private void columnCard(Canvas c, float top, float bottom) {
+        tmp.set(COL_L * k, top * k, COL_R * k, bottom * k);
+        scene.glass(c, tmp, 32 * k, SMOKE, tone(0.22f, 0.26f), 0, 0, 0.005f, 1, 0.8f);
+    }
+
+    /** The drawer's weather card, smaller: now on the left, the next 5 hours on the right. */
+    private void drawColumnWeather(Canvas c) {
+        columnCard(c, COL_WX_T, COL_WX_B);
+        refreshDrawerText();
+        HomeData.Weather wx = textWeather;
+        float x = (COL_L + 30) * k, top = COL_WX_T * k;
+        c.drawText(weatherTitle, x, top + 42 * k, colTitle);
+        if (Double.isNaN(wx.temp)) {
+            c.drawText(Ui.tr("No weather data right now."), x, top + 110 * k, colDim);
+            return;
+        }
         String symbol = Symbols.weather(wx.code, wx.isDay);
-        float sw = Symbols.width(getContext(), symbol, size);
-        Symbols.draw(getContext(), c, symbol, x + sw / 2, base - Ui.halfCap(lWeather), size, lWeather.getColor());
-        c.drawText(weatherLine, x + sw + 16 * k, base, lWeather);
+        float sw = Symbols.width(getContext(), symbol, 44 * k);
+        Symbols.draw(getContext(), c, symbol, x + sw / 2, top + 92 * k, 44 * k, 0xF2FFFFFF);
+        c.drawText(nowTemp, x + sw + 14 * k - Ui.leftBearing(colBig, nowTemp), top + 114 * k, colBig);
+        c.drawText(HomeData.condition(wx.code, wx.isDay), x, top + 148 * k, colText);
+        c.drawText(highLow, x, top + 178 * k, colDim);
+        float split = (COL_L + 300) * k;
+        fill.setShader(null);
+        fill.setColor(0x24FFFFFF);
+        c.drawRect(split - k, top + 30 * k, split + k, COL_WX_B * k - 30 * k, fill);
+        float hx = split + 12 * k, hw = ((COL_R - 12) * k - hx) / 5;
+        for (int i = 0; i < wx.hours.size() && i < 5; i++) {
+            float hc = hx + hw * (i + 0.5f);
+            c.drawText(hourText[i], hc, top + 58 * k, colHour);
+            Symbols.draw(getContext(), c, Symbols.weather(wx.hourCode.get(i), wx.hourDay.get(i)), hc, top + 102 * k, 28 * k, 0xE6FFFFFF);
+            c.drawText(hourTempText[i], hc, top + 152 * k, colHourTemp);
+        }
+    }
+
+    /** Memory, processor and storage: how much is in use, a bar, and used / total (the processor: its temperature). */
+    private void drawColumnSystem(Canvas c) {
+        columnCard(c, COL_SYS_T, COL_SYS_B);
+        float left = (COL_L + 30) * k, right = (COL_R - 30) * k, gap = 28 * k, w = (right - left - 2 * gap) / 3;
+        float top = COL_SYS_T * k;
+        int[] values = statsValues;
+        for (int i = 0; i < 3; i++) {
+            float x = left + i * (w + gap);
+            c.drawText(i == 0 ? Ui.tr("Memory") : i == 1 ? Ui.tr("Processor") : Ui.tr("Storage"), x, top + 40 * k, colTitle);
+            c.drawText(statsText[i], x - Ui.leftBearing(colValue, statsText[i]), top + 88 * k, colValue);
+            float barTop = top + 104 * k, barH = 8 * k;
+            fill.setShader(null);
+            fill.setColor(0x33FFFFFF);
+            c.drawRoundRect(x, barTop, x + w, barTop + barH, barH / 2, barH / 2, fill);
+            if (values[i] > 0) {
+                fill.setColor(values[i] >= 85 ? 0xFFFF9F0A : 0xE6FFFFFF);
+                c.drawRoundRect(x, barTop, x + w * values[i] / 100f, barTop + barH, barH / 2, barH / 2, fill);
+            }
+            boolean hot = i == 1 && !statsText[4].isEmpty() && stats.temperature >= 85;
+            colDim.setColor(hot ? 0xFFFF9F0A : 0xB3FFFFFF);
+            c.drawText(statsText[3 + i], x, top + 142 * k, colDim);
+            colDim.setColor(0xB3FFFFFF);
+        }
+    }
+
+    /** New measurements (main thread): their texts, made here and not while drawing. */
+    private void onStats() {
+        int[] values = statsValues;
+        values[0] = stats.memory;
+        values[1] = stats.cpu;
+        values[2] = stats.storage;
+        for (int i = 0; i < 3; i++) statsText[i] = values[i] < 0 ? "–" : values[i] + "%";
+        statsText[3] = stats.memoryUse;
+        statsText[4] = stats.temperature < 0 ? "" : stats.temperature + " °C";
+        statsText[5] = stats.storageUse;
+        if (!ownColumn) return;
+        heroDirty = true;
+        heroLayer.invalidate();
     }
 
     /**
@@ -2973,7 +3158,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             case Z_SHELF:
                 // Up from an empty shelf too: move()'s older zones (the hero, the corner capsule) aren't drawn any more.
                 if (dy >= 0) return false;
-                if (cards.isEmpty()) {
+                if (cards.isEmpty() && camerasShown()) {
+                    zone = Z_CAMS;
+                    camIndex = nearestCamera(lastCameraRow(), shelf.isEmpty() ? w / 2f : tileRects[shelfIndex].centerX());
+                } else if (cards.isEmpty()) {
                     if (!picksOn() && lightButtons.isEmpty()) return true;   // no tabs and no buttons above
                     zone = Z_TOP;
                     topIndex = picksOn() ? tab : 3;
@@ -3002,7 +3190,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     topIndex = next;
                     if (topIndex < 3) selectTab(topIndex);   // like Apple TV tabs: focusing a tab selects it
                 } else if (dy > 0) {
-                    if (cards.isEmpty()) {
+                    if (cards.isEmpty() && camerasShown() && cameras.hasChoice()) {
+                        zone = Z_CAMGRID;
+                        camChoice = cameras.choice();
+                    } else if (cards.isEmpty() && camerasShown()) {
+                        zone = Z_CAMS;
+                        camIndex = nearestCamera(0, topRects[topIndex].centerX());
+                    } else if (cards.isEmpty()) {
                         zone = Z_SHELF;
                     } else {
                         zone = Z_CARDS;
@@ -3014,12 +3208,68 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     return true;
                 }
                 break;
+            case Z_CAMS: {
+                // The grid: across a row, then up to the 4-or-6 choice (or the corner buttons) or down to the shelf.
+                int n = cameras.count(), cols = cameras.columns(), col = camIndex % cols, next = camIndex;
+                if (dx != 0) next = col + dx >= 0 && col + dx < cols ? camIndex + dx : camIndex;
+                else if (dy < 0 && camIndex >= cols) next = camIndex - cols;
+                else if (dy > 0 && camIndex + cols < n) next = camIndex + cols;
+                else if (dy < 0 && cameras.hasChoice()) {
+                    zone = Z_CAMGRID;
+                    camChoice = cameras.choice();
+                } else if (dy < 0) {
+                    if (lightButtons.isEmpty()) return true;
+                    zone = Z_TOP;
+                    topIndex = 3;
+                } else if (dy > 0) {
+                    zone = Z_SHELF;
+                    if (!shelf.isEmpty()) shelfIndex = nearest(tileRects, tileRects.length, cameras.centerX(camIndex));
+                }
+                if (zone == Z_CAMS) {
+                    if (next < 0 || next >= n || next == camIndex) return true;
+                    camIndex = next;
+                }
+                break;
+            }
+            case Z_CAMGRID:
+                if (dx != 0) {
+                    int next = Math.max(0, Math.min(1, camChoice + dx));
+                    if (next == camChoice) return true;
+                    camChoice = next;
+                } else if (dy < 0) {
+                    if (lightButtons.isEmpty()) return true;
+                    zone = Z_TOP;
+                    topIndex = 3;
+                } else {
+                    zone = Z_CAMS;
+                    camIndex = nearestCamera(0, cameras.pillCenterX(camChoice));
+                }
+                break;
             default:
                 return false;
         }
         retarget(false);
         click.move();
         return true;
+    }
+
+    private boolean camerasShown() {
+        return cameras.any() && cameras.getVisibility() == VISIBLE;
+    }
+
+    /** The first camera of the grid's last row. */
+    private int lastCameraRow() {
+        int cols = cameras.columns();
+        return (cameras.count() - 1) / cols * cols;
+    }
+
+    /** Of the cameras in the row starting at `first`, the one nearest to x. */
+    private int nearestCamera(int first, float x) {
+        int best = first, last = Math.min(cameras.count() - 1, first + cameras.columns() - 1);
+        for (int i = first + 1; i <= last; i++) {
+            if (Math.abs(cameras.centerX(i) - x) < Math.abs(cameras.centerX(best) - x)) best = i;
+        }
+        return best;
     }
 
     private static int nearest(RectF[] rects, int count, float x) {

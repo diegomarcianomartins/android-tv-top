@@ -203,6 +203,7 @@ final class HomeMode {
 
     /** After the TV boots (and after a TV update): wait for the system to settle and check Free My TV mode. */
     static void bootCheck(Context c) {
+        ModeJob.schedule(c, ModeJob.HOME, null, 3_000);
         ensureRemoteService(c, 30_000);
         ModeJob.schedule(c, ModeJob.VERIFY, null, 45_000);
     }
@@ -219,6 +220,25 @@ final class HomeMode {
      */
     static void ensureRemoteService(Context c, long delayMs) {
         if (RemoteKeys.supported()) ModeJob.schedule(c, ModeJob.REMOTE, null, delayMs);
+    }
+
+    /**
+     * Some boards start the TV through a boot app of their own that opens the first home screen it finds, before
+     * Android lets apps that aren't made for that early start (this one) be found: an Amlogic projector's JmLauncher
+     * found none and stayed on the boot animation for good. After boot, if the animation is still up (or that boot
+     * app is in front), the home screen is asked for.
+     */
+    static void showHomeNow(Context app) {
+        if (!FREE.equals(state(app).optString("mode"))) return;
+        try (Adb adb = Adb.connect(app, 10_000, null)) {
+            String bootAnimation = adb.shell("getprop init.svc.bootanim").trim();
+            String top = adb.shell("dumpsys activity activities | grep -m1 topResumedActivity");
+            if (top.contains(PKG + "/") || (!bootAnimation.equals("running") && !top.contains("com.jm.jmlauncher/"))) return;
+            adb.shell("am start -a android.intent.action.MAIN -c android.intent.category.HOME");
+            AppLog.w("home screen opened after boot (" + (bootAnimation.equals("running") ? "boot animation still up" : "boot app in front") + ")");
+        } catch (IOException e) {
+            AppLog.w("home after boot: " + e.getMessage());
+        }
     }
 
     static void ensureRemoteServiceNow(Context app) {

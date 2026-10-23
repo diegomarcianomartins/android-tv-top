@@ -46,6 +46,7 @@ final class Backdrop {
     final Bitmap lightImage;            // by day: the background (the lightened frosted version, scaled up on screen)
     final int[] nightFrost, nightGlass; // at night: frosted (the bottom drawer's frosted glass) and glass, darkened
     final Bitmap nightImage;            // at night: the background (the darkened frosted version)
+    Bitmap photo;                       // the person's own photo (wallpaper): drawn sharp, under a veil
 
     private Backdrop(Bitmap image, int[] frost, int[] glass, Bitmap wide, Bitmap tall, int[] light, int[] lightGlass,
                      int[] night, int[] nightGlass) {
@@ -62,7 +63,16 @@ final class Backdrop {
         nightImage = night == null ? null : Bitmap.createBitmap(night, FW, FH, Bitmap.Config.ARGB_8888);
     }
 
-    static Backdrop make(Bitmap src, boolean forLight) {
+    /** The person's own photo (Recs.wallpaper): the light design's glass and cards, plus the photo itself, sharp. */
+    static Backdrop wallpaper(Bitmap src) {
+        Bitmap sharp = cover(src);
+        Backdrop b = make(sharp.copy(Bitmap.Config.ARGB_8888, false), true);
+        b.photo = gpu(sharp);
+        return b;
+    }
+
+    /** The photo filling the UI's size (W × H), cropped at the center; recycles src. */
+    private static Bitmap cover(Bitmap src) {
         Bitmap out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(out);
         Paint photo = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
@@ -70,6 +80,12 @@ final class Backdrop {
         float sw = src.getWidth() * scale, sh = src.getHeight() * scale;
         c.drawBitmap(src, null, new RectF((W - sw) / 2, (H - sh) / 2, (W + sw) / 2, (H + sh) / 2), photo);
         src.recycle();
+        return out;
+    }
+
+    static Backdrop make(Bitmap src, boolean forLight) {
+        Bitmap out = src.getWidth() == W && src.getHeight() == H && src.isMutable() ? src : cover(src);
+        Canvas c = new Canvas(out);
         if (forLight) {
             // Light design: everything comes from the photo without scrims.
             Bitmap wide = card(out, WIDE_W, WIDE_H), tall = card(out, TALL_W, TALL_H);
