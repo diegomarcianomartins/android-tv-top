@@ -2,6 +2,8 @@ package io.freemytv;
 
 import android.app.ActivityManager;
 import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.NetworkCapabilities;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
@@ -18,9 +20,10 @@ import java.io.FileReader;
 import java.io.IOException;
 
 /**
- * Memory, processor, storage and Wi-Fi signal for the home screen's system card, measured every 3 s on a background
- * thread while the home screen shows. The processor's use comes from /proc/stat, which Android 8+ hides from apps on most TVs
- * (SELinux): then it is read through the TV's own ADB, in Free My TV mode. Values are -1 when unknown.
+ * Memory, processor, storage and Wi-Fi signal (or a network cable) for the home screen's system card, measured every
+ * 3 s on a background thread while the home screen shows. The processor's use comes from /proc/stat, which Android 8+
+ * hides from apps on most TVs (SELinux): then it is read through the TV's own ADB, in Free My TV mode. Values are -1
+ * when unknown.
  */
 final class SystemStats {
     private static final long EVERY_MS = 3000;
@@ -39,6 +42,7 @@ final class SystemStats {
     volatile String memoryUse = "", storageUse = "";     // "used / total"
     volatile int wifi = -1;                                 // signal, percent; -1 off Wi-Fi
     volatile String wifiUse = "";                           // link speed
+    volatile boolean ethernet;                              // on a network cable instead
 
     SystemStats(Context c, Runnable onChange) {
         context = c.getApplicationContext();
@@ -110,6 +114,14 @@ final class SystemStats {
         }
         wifi = level;
         wifiUse = speed;
+        boolean cable = false;
+        try {
+            ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            NetworkCapabilities nc = cm == null ? null : cm.getNetworkCapabilities(cm.getActiveNetwork());
+            cable = nc != null && nc.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET);
+        } catch (RuntimeException ignored) {
+        }
+        ethernet = cable;
     }
 
     private String usedOfTotal(long used, long total) {

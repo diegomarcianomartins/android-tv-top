@@ -29,8 +29,9 @@ import java.util.List;
  * One DVR camera in a small window over everything, other apps included (holding OK on a camera of the home screen).
  * Each hold on the same camera moves it to the next corner (top left, top right, bottom right, bottom left), then
  * closes it; a hold on another camera swaps the picture. Only one at a time. A foreground service, so it stays while
- * another app is open; the home screen's own cameras stop then, this one goes on. On a TCL it decodes on the processor:
- * those TVs have too few video decoders, and YouTube's picture stayed black next to it.
+ * another app is open; the home screen's own cameras stop then, this one goes on, on the main stream (sharper). On
+ * a TCL it decodes the substream on the processor: those TVs have too few video decoders, and YouTube's picture
+ * stayed black next to it.
  */
 public final class CameraPopup extends Service {
     private static final String EXTRA_INDEX = "index", CHANNEL = "camera-popup";
@@ -144,7 +145,7 @@ public final class CameraPopup extends Service {
 
             @Override public void onSurfaceTextureAvailable(SurfaceTexture t, int w, int h) {
                 if (v != view) return;
-                mine = new CameraStream(url, false, RemoteKeys.TCL, i, t, new CameraStream.Listener() {
+                mine = new CameraStream(url, !RemoteKeys.TCL, RemoteKeys.TCL, i, t, new CameraStream.Listener() {
                     @Override public void onVideoSize(int vw, int vh) { v.post(() -> fill(v, vw, vh)); }
 
                     @Override public void onLive(boolean live) {}

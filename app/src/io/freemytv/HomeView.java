@@ -3040,7 +3040,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         int[] values = statsValues;
         for (int i = 0; i < 4; i++) {
             float x = left + i * (w + gap);
-            String title = i == 0 ? Ui.tr("Memory") : i == 1 ? Ui.tr("Processor") : i == 2 ? Ui.tr("Storage") : "Wi-Fi";
+            String title = i == 0 ? Ui.tr("Memory") : i == 1 ? Ui.tr("Processor") : i == 2 ? Ui.tr("Storage")
+                    : stats.ethernet ? "Ethernet" : "Wi-Fi";
             drawFit(c, title, x, top + 40 * k, sysTitle, w);
             drawFit(c, statsText[i], x - Ui.leftBearing(sysValue, statsText[i]), top + 86 * k, sysValue, w);
             float barTop = top + 104 * k, barH = 8 * k;
@@ -3074,8 +3075,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         values[0] = stats.memory;
         values[1] = stats.cpu;
         values[2] = stats.storage;
-        values[3] = stats.wifi;
+        values[3] = stats.ethernet ? 100 : stats.wifi;      // a cable: a full bar
         for (int i = 0; i < 4; i++) statsText[i] = values[i] < 0 ? "–" : values[i] + "%";
+        if (stats.ethernet) statsText[3] = "OK";
         statsText[4] = stats.memoryUse;
         statsText[5] = stats.temperature < 0 ? "" : stats.temperature + " °C";
         statsText[6] = stats.storageUse;

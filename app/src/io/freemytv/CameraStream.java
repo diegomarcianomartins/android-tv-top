@@ -65,7 +65,8 @@ final class CameraStream implements Runnable {
 
     // Video
     private boolean hevc;
-    private final boolean software;
+    private boolean software;          // decoding on the processor (asked for, or no hardware decoder left)
+    private final String sub;
     private byte[] vps, sps, pps;
     private MediaCodec codec;
     private Surface surface;
@@ -85,10 +86,14 @@ final class CameraStream implements Runnable {
      * the main stream is tried first and the substream follows it (a TV with no H.265 decoder: a TCL on Android 9).
      * With `software` it decodes on the processor, leaving the TV's few hardware decoders to the app in front.
      */
-    CameraStream(String url, boolean preferMain, boolean software, int index, SurfaceTexture texture, Listener listener) {
+    CameraStream(String url, boolean preferMain, boolean software, int index, SurfaceTexture texture,
+            Listener listener) {
         this.software = software;
+        sub = url;
         String main = CameraActivity.mainStream(url);
-        urls = main.equals(url) ? new String[] {url} : preferMain ? new String[] {main, url} : new String[] {url, main};
+        // On the processor, only the substream: a main stream (2K, H.265) is too much for it and breaks into blocks.
+        urls = main.equals(url) || software ? new String[] {url}
+                : preferMain ? new String[] {main, url} : new String[] {url, main};
         label = "camera " + (index + 1);
         this.texture = texture;
         this.listener = listener;
@@ -130,18 +135,35 @@ final class CameraStream implements Runnable {
         int which = 0, failed = 0;
         while (running) {
             use(urls[which]);
+            boolean decoderFailed = false;
             try {
                 play();
+            } catch (DecoderException e) {
+                decoderFailed = true;
+                if (running) AppLog.w(label + ": " + e.getMessage());
             } catch (IOException | RuntimeException e) {
                 if (running) AppLog.w(label + ": " + e.getMessage());
             } finally {
                 close();
             }
-            boolean wasLive = live, good = live && System.currentTimeMillis() - liveAt >= GOOD_MS;
+            // The camera answered but the TV's hardware decoders are all taken (a TCL has 2): the same stream on the
+            // processor, not the main one (2K H.265 on the processor took a 1 GB TV's memory and every camera's
+            // picture with it).
+            boolean onSub = urls[which].equals(sub);
+            if (decoderFailed && onSub && running && !software) {
+                software = true;
+                live = false;
+                listener.onLive(false);
+                AppLog.w(label + ": no hardware decoder free, decoding on the processor");
+                continue;
+            }
+            // A software decoder is taken back by Android when an app needs one and the TV runs short: soon again.
+            boolean wasLive = live;
+            boolean good = software && decoderFailed || live && System.currentTimeMillis() - liveAt >= GOOD_MS;
             live = false;
             if (!running) break;
             listener.onLive(false);
-            if (!good && !wasLive && ++failed < urls.length) {
+            if (!good && !wasLive && !(decoderFailed && onSub) && ++failed < urls.length) {
                 which = (which + 1) % urls.length;      // the other stream, right away
                 continue;
             }
@@ -577,7 +599,7 @@ final class CameraStream implements Runnable {
             waitKey = false;
             drain();
         } catch (IllegalStateException e) {
-            throw new IOException("decoder: " + e.getMessage());
+            throw new DecoderException("decoder: " + e.getMessage());
         }
     }
 
@@ -601,8 +623,13 @@ final class CameraStream implements Runnable {
         } catch (IOException | RuntimeException e) {
             if (codec != null) codec.release();
             codec = null;
-            throw new IOException("no decoder for " + mime + ": " + e.getMessage());
+            throw new DecoderException("no decoder for " + mime + ": " + e.getMessage());
         }
+    }
+
+    /** The camera answered, but its picture couldn't be decoded. */
+    private static final class DecoderException extends IOException {
+        DecoderException(String message) { super(message); }
     }
 
     /** Android's own decoder for `mime` (it runs on the processor), or null. */
