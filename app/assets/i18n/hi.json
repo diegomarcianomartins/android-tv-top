@@ -149,6 +149,7 @@
  "YouTube button": "YouTube बटन",
  "YouTube, Prime Video and Google Play: the TV itself controls those buttons.": "YouTube, Prime Video और Google Play: ये बटन टीवी खुद नियंत्रित करता है।",
  "Your TV's home screen and screensaver": "आपके TV की होम स्क्रीन और स्क्रीनसेवर",
+ "cameras|Turn off": "बंद करें",
  "debugging is off on the TV (port 5555 closed)": "टीवी पर डीबगिंग बंद है (पोर्ट 5555 बंद)",
  "debugging permission wasn't accepted on the TV": "टीवी पर डीबगिंग की अनुमति स्वीकार नहीं हुई",
  "format|EEEE, MMMM d": "EEEE, d MMMM",

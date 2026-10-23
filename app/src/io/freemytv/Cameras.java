@@ -17,8 +17,8 @@ import java.util.List;
 
 /**
  * The live cameras of a DVR (Config.DVR_CAMERAS, up to 6) on the home screen: a grid of rounded tiles (2×2 for up to
- * 4, 3×2 for 5 or 6), each one a CameraStream drawn on a TextureView. With more than 4 cameras, a choice above the grid
- * shows 4 or 6 of them, in their order. They play only while the home screen shows (HomeView
+ * 4, 3×2 for 5 or 6), each one a CameraStream drawn on a TextureView. A choice above the grid shows 4 or 6 of them
+ * (with more than 4), in their order, or turns them all off (no video work at all; the choice stays to turn them on). They play only while the home screen shows (HomeView
  * resume/pause). The remote focuses a camera or the choice (HomeView's camera zones); OK on a camera opens it full
  * screen (CameraActivity).
  */
@@ -26,18 +26,19 @@ final class Cameras extends ViewGroup {
     static final int MAX = 6;
     /** Right after the TV starts, the cameras wait: on a 1 GB projector the boot already takes all four cores. */
     private static final long AFTER_BOOT_MS = 150_000;
-    private static final int[] GRIDS = {4, 6};
 
     private final List<String> urls = urls();
+    /** How many cameras each choice shows: {4, 6, 0} with more than 4, else {all, 0}; 0 is "Turn off". */
+    private final int[] grids;
     /** The 4-or-6 choice, in the home screen's own file: the main process keeps "settings" cached and would write it back. */
     private final android.content.SharedPreferences ui;
     private final TextureView[] views;
     private final CameraStream[] streams;
     private final Paint tile = new Paint(Paint.ANTI_ALIAS_FLAG), ring = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint pillText = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
-    private final RectF[] pills = {new RectF(), new RectF()};
+    private final RectF[] pills;
     private final RectF pillBar = new RectF();
-    private final String[] pillLabels = new String[2];
+    private final String[] pillLabels;
     private float radius, gap, pad, band;     // pad: room for the focused tile to grow; band: the choice's row
     private boolean on;
     private int shown, cols, focused = -1, pillFocused = -1;
@@ -63,6 +64,10 @@ final class Cameras extends ViewGroup {
         pillText.setTextAlign(Paint.Align.CENTER);
         views = new TextureView[urls.size()];
         streams = new CameraStream[urls.size()];
+        grids = urls.size() > 4 ? new int[] {4, 6, 0} : new int[] {urls.size(), 0};
+        pills = new RectF[grids.length];
+        for (int i = 0; i < pills.length; i++) pills[i] = new RectF();
+        pillLabels = new String[grids.length];
         ViewOutlineProvider rounded = new ViewOutlineProvider() {
             @Override public void getOutline(View v, Outline o) {
                 o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), radius);
@@ -94,26 +99,32 @@ final class Cameras extends ViewGroup {
         return cols;
     }
 
-    /** Whether the 4-or-6 choice shows (more than 4 cameras). */
+    /** Whether the choice above the grid shows (there are cameras). */
     boolean hasChoice() {
-        return views.length > 4;
+        return views.length > 0;
     }
 
-    /** Which choice is in use: 0 (4 cameras) or 1 (6). */
+    int choices() {
+        return grids.length;
+    }
+
+    /** Which choice is in use (an index of grids). */
     int choice() {
-        return ui.getInt("cameraGrid", GRIDS[0]) == GRIDS[1] ? 1 : 0;
+        int saved = ui.getInt("cameraGrid", grids[0]);
+        for (int i = 0; i < grids.length; i++) if (grids[i] == saved) return i;
+        return 0;
     }
 
-    /** Shows 4 or 6 cameras (choice 0 or 1): the ones that leave stop, the new ones start. */
+    /** Shows that many cameras, or none: the ones that leave stop, the new ones start. */
     void choose(int choice) {
-        ui.edit().putInt("cameraGrid", GRIDS[choice]).apply();
+        ui.edit().putInt("cameraGrid", grids[choice]).apply();
         applyGrid();
         requestLayout();
         invalidate();
     }
 
     private void applyGrid() {
-        shown = hasChoice() ? Math.min(views.length, GRIDS[choice()]) : views.length;
+        shown = Math.min(views.length, grids[choice()]);
         cols = shown <= 1 ? 1 : shown <= 4 ? 2 : 3;
         for (int i = 0; i < views.length; i++) {
             if (i < shown) {
@@ -132,7 +143,7 @@ final class Cameras extends ViewGroup {
         return getLeft() + (views[i].getLeft() + views[i].getRight()) / 2f;
     }
 
-    /** Center of choice `i` (0: 4 cameras, 1: 6), in the parent's coordinates. */
+    /** Center of choice `i`, in the parent's coordinates. */
     float pillCenterX(int i) {
         return getLeft() + pills[i].centerX();
     }
@@ -241,13 +252,14 @@ final class Cameras extends ViewGroup {
         }
         if (hasChoice()) {
             float h = 52 * k, x = pad + 6 * k, top = pad / 2 + 6 * k;
-            for (int i = 0; i < 2; i++) {
-                pillLabels[i] = Ui.plural("plural|one:{n} camera|other:{n} cameras", GRIDS[i]);
+            for (int i = 0; i < grids.length; i++) {
+                pillLabels[i] = grids[i] == 0 ? Ui.tr("cameras|Turn off")
+                        : Ui.plural("plural|one:{n} camera|other:{n} cameras", grids[i]);
                 float w = pillText.measureText(pillLabels[i]) + 52 * k;
                 pills[i].set(x, top, x + w, top + h);
                 x += w + 6 * k;
             }
-            pillBar.set(pills[0].left - 6 * k, top - 6 * k, pills[1].right + 6 * k, top + h + 6 * k);
+            pillBar.set(pills[0].left - 6 * k, top - 6 * k, pills[grids.length - 1].right + 6 * k, top + h + 6 * k);
         }
         setMeasuredDimension(width, height);
     }
@@ -275,7 +287,7 @@ final class Cameras extends ViewGroup {
         float r = pillBar.height() / 2;
         c.drawRoundRect(pillBar, r, r, tile);
         int chosen = choice();
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < grids.length; i++) {
             RectF p = pills[i];
             float pr = p.height() / 2;
             if (i == pillFocused || i == chosen) {

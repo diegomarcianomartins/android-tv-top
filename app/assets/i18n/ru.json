@@ -149,6 +149,7 @@
  "YouTube button": "Кнопка YouTube",
  "YouTube, Prime Video and Google Play: the TV itself controls those buttons.": "Кнопками YouTube, Prime Video и Google Play управляет телевизор.",
  "Your TV's home screen and screensaver": "Главный экран и заставка телевизора",
+ "cameras|Turn off": "Выключить",
  "debugging is off on the TV (port 5555 closed)": "отладка на телевизоре выключена (порт 5555 закрыт)",
  "debugging permission wasn't accepted on the TV": "на телевизоре не разрешена отладка",
  "format|EEEE, MMMM d": "EEEE, d MMMM",

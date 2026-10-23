@@ -41,6 +41,12 @@ public final class CameraPopup extends Service {
     private TextureView view;
     private CameraStream stream;
     private int index = -1, corner = -1, tries;
+    private static CameraPopup running;     // the one showing, in this process (:home)
+
+    /** Closes the popup, if one is showing (a camera opened full screen: no need for both). Main thread. */
+    static void dismiss() {
+        if (running != null) running.close();
+    }
 
     /** A hold on camera `index` of the home screen. */
     static void press(Context c, int index) {
@@ -50,6 +56,7 @@ public final class CameraPopup extends Service {
     @Override public void onCreate() {
         super.onCreate();
         Ui.init(this);
+        running = this;
     }
 
     @Override public IBinder onBind(Intent intent) {
@@ -215,6 +222,7 @@ public final class CameraPopup extends Service {
     }
 
     @Override public void onDestroy() {
+        if (running == this) running = null;
         if (frame != null) close();
         main.removeCallbacksAndMessages(null);
         super.onDestroy();

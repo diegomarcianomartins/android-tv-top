@@ -133,7 +133,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final int[] statsValues = {-1, -1, -1};
     private Paint colTitle, colBig, colText, colDim, colHour, colHourTemp, colValue;
     private int zone = Z_SHELF;
-    private int camIndex, camChoice;   // the focused camera; the focused 4-or-6 choice
+    private int camIndex, camChoice;   // the focused camera; the focused choice above the grid (4, 6, off)
 
     // Night look (like Apple's "Automatic" appearance): darker from sunset to sunrise, with a 2 s transition.
     private static final long NIGHT_MS = 2000;
@@ -2275,7 +2275,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             if (camChoice == cameras.choice()) return;
             click.move();
             cameras.choose(camChoice);
-            camIndex = Math.min(camIndex, cameras.count() - 1);
+            camIndex = Math.max(0, Math.min(camIndex, cameras.count() - 1));
             requestLayout();
             return;
         } else if (zone == Z_CARDS) {
@@ -3181,7 +3181,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             case Z_SHELF:
                 // Up from an empty shelf too: move()'s older zones (the hero, the corner capsule) aren't drawn any more.
                 if (dy >= 0) return false;
-                if (cards.isEmpty() && camerasShown()) {
+                if (cards.isEmpty() && camerasShown() && cameras.count() == 0) {
+                    zone = Z_CAMGRID;               // cameras off: only their choice is up there
+                    camChoice = cameras.choice();
+                } else if (cards.isEmpty() && camerasShown()) {
                     zone = Z_CAMS;
                     camIndex = nearestCamera(lastCameraRow(), shelf.isEmpty() ? w / 2f : tileRects[shelfIndex].centerX());
                 } else if (cards.isEmpty()) {
@@ -3256,13 +3259,15 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             }
             case Z_CAMGRID:
                 if (dx != 0) {
-                    int next = Math.max(0, Math.min(1, camChoice + dx));
+                    int next = Math.max(0, Math.min(cameras.choices() - 1, camChoice + dx));
                     if (next == camChoice) return true;
                     camChoice = next;
                 } else if (dy < 0) {
                     if (lightButtons.isEmpty()) return true;
                     zone = Z_TOP;
                     topIndex = 3;
+                } else if (cameras.count() == 0) {
+                    zone = Z_SHELF;
                 } else {
                     zone = Z_CAMS;
                     camIndex = nearestCamera(0, cameras.pillCenterX(camChoice));

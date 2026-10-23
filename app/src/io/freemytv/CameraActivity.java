@@ -48,6 +48,7 @@ public final class CameraActivity extends Activity {
         super.onCreate(state);
         Ui.init(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        CameraPopup.dismiss();     // full screen replaces the popup
         urls = Cameras.urls();
         if (urls.isEmpty()) {
             finish();
