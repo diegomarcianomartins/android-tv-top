@@ -208,6 +208,9 @@ desligado e root de fábrica (`SuperUser`). O que se aprendeu:
 - SELinux ligado: o app não lê `/proc/stat` nem a temperatura. O `SystemStats` lê o `/proc/stat` pelo ADB da própria TV
   (só no modo Free My TV, sem pedir permissão de novo); a temperatura nem o shell lê.
 - Sem decodificador H.265: a tela cheia das câmeras cai do stream principal para o substream.
+- Poucos decodificadores de vídeo: com a câmera flutuante no hardware, o YouTube ficava preto. Na TCL ela decodifica
+  pelo processador (`OMX.google.h264.decoder`), e os dois rodam juntos. O scrcpy também ocupa o hardware de vídeo
+  (o codificador): feche-o antes de assistir vídeos nessa TV.
 
 ## O código
 
@@ -237,7 +240,7 @@ desligado e root de fábrica (`SuperUser`). O que se aprendeu:
   preferência já reduzido para o tamanho da interface) substitui as fotos das sugestões (`Recs.wallpaper`,
   `Backdrop.wallpaper`). A foto aparece nítida sob um véu, e a coluna da esquerda vira três cartões de vidro
   (`HomeView.drawColumn`): relógio, clima (sai da gaveta) e sistema (`SystemStats`: memória, processador pelo
-  `/proc/stat` quando legível, temperatura e armazenamento). Fotos pessoais nunca vão para o git.
+  `/proc/stat` quando legível, temperatura, armazenamento e o sinal do Wi-Fi). Fotos pessoais nunca vão para o git.
 - **Câmeras de DVR** (`dvr_cameras`, até 6): `CameraStream` é um cliente RTSP próprio (RTP sobre TCP, Digest, H.264 e
   H.265) que entrega cada quadro direto ao `MediaCodec`: o `MediaPlayer` do Android trata RTSP como filme e pausa
   para encher o buffer o tempo todo. `Cameras` é o mosaico (2×2 ou 3×2, com a escolha 4/6 em `home-ui`), focável pelo
