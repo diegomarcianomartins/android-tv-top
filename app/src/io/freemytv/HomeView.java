@@ -3147,8 +3147,19 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 String label = it.label;
                 float half = lTip.measureText(label) / 2;
                 float x = Math.min(r.centerX(), CONTENT_R * k - half);
+                float base = r.bottom + (40 + 4 * f) * k;
+                boolean own = bgTo != null && bgTo.photo != null;
+                if (own) {
+                    // On their own photo: the name on a small smoked glass card, like the left column's.
+                    float pad = 18 * k, cap = Ui.halfCap(lTip);
+                    float cx = Math.min(x, CONTENT_R * k - half - pad);
+                    x = cx;
+                    tmp.set(cx - half - pad, base - cap - 14 * k - cap, cx + half + pad, base - cap + 14 * k + cap);
+                    scene.glass(c, tmp, tmp.height() / 2, SMOKE, tone(0.22f, 0.26f), 0, 0, 0.005f, 1, 0.8f * f);
+                }
+                lTip.setColor(own ? 0xFFFFFFFF : tone(L_INK, WHITE));
                 lTip.setAlpha(Math.round(255 * f));
-                c.drawText(label, x, r.bottom + (40 + 4 * f) * k, lTip);
+                c.drawText(label, x, base, lTip);
             }
         }
     }

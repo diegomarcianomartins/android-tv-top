@@ -55,6 +55,8 @@ final class HomeApps {
     private HomeApps() {}
 
     static final int APP = 0, LIVE_TV = 1, INPUT = 2, ALL_APPS = 3, SETTINGS = 4, ANDROID_SETTINGS = 5;
+    /** A system settings screen (Wi-Fi, Bluetooth): the first of its PANELS this TV has. */
+    static final int PANEL = 8;
     /** The "HDMI Inputs" button: opens the bottom drawer on the inputs (the home screen handles it). */
     static final int INPUTS = 7;
     /** Image size of each card (16:9; on screen it shows up to ~330 px wide). */
@@ -189,20 +191,26 @@ final class HomeApps {
 
     // MARK: - Top buttons (the round ones at the top right)
 
-    static final String TOP_LIVE = "live", TOP_INPUTS = "inputs", TOP_SETTINGS = "settings";
-    static final List<String> TOP_DEFAULT = Collections.unmodifiableList(java.util.Arrays.asList(TOP_LIVE, TOP_INPUTS, TOP_SETTINGS));
-    static final int MAX_TOP = TOP_DEFAULT.size();
+    static final String TOP_LIVE = "live", TOP_INPUTS = "inputs", TOP_WIFI = "wifi", TOP_BLUETOOTH = "bluetooth",
+            TOP_PROJECTION = "projection", TOP_SETTINGS = "settings";
+    /** Every button there can be, in their order (Settings > Top Buttons picks among them). */
+    static final List<String> TOP_ALL = Collections.unmodifiableList(java.util.Arrays.asList(TOP_LIVE, TOP_INPUTS,
+            TOP_WIFI, TOP_BLUETOOTH, TOP_PROJECTION, TOP_SETTINGS));
+    static final List<String> TOP_DEFAULT = Collections.unmodifiableList(java.util.Arrays.asList(TOP_INPUTS, TOP_WIFI,
+            TOP_BLUETOOTH, TOP_PROJECTION, TOP_SETTINGS));
+    static final int MAX_TOP = TOP_ALL.size();
 
-    /** The keys of the top buttons, in order (Settings > Top Buttons; by default Live TV, HDMI Inputs, Settings). */
+    /** The keys of the top buttons, in order (Settings > Top Buttons, or TOP_DEFAULT), that this TV can open. */
     static List<String> topButtonKeys() {
         List<String> saved = Prefs.topButtons();
-        if (saved == null) return TOP_DEFAULT;
         List<String> keys = new ArrayList<>();
-        for (String key : saved) if (TOP_DEFAULT.contains(key) && !keys.contains(key)) keys.add(key);
+        for (String key : saved == null ? TOP_DEFAULT : saved) {
+            if (TOP_ALL.contains(key) && !keys.contains(key) && topAvailable(key)) keys.add(key);
+        }
         return keys;
     }
 
-    /** The top buttons, ready to draw (0 to 3 of them). */
+    /** The top buttons, ready to draw. */
     static List<Item> topButtons() {
         List<Item> items = new ArrayList<>();
         for (String key : topButtonKeys()) items.add(topButton(key));
@@ -212,16 +220,61 @@ final class HomeApps {
     private static Item topButton(String key) {
         switch (key) {
             case TOP_LIVE: return action(LIVE_TV, TOP_LIVE, Ui.tr("light|Live TV"), "live_tv");
-            case TOP_INPUTS: return action(INPUTS, TOP_INPUTS, Ui.tr("HDMI Inputs"), "hdmi");
+            case TOP_INPUTS: return action(INPUTS, TOP_INPUTS, "HDMI", "hdmi");
+            case TOP_WIFI: return action(PANEL, TOP_WIFI, "Wi-Fi", "wifi");
+            case TOP_BLUETOOTH: return action(PANEL, TOP_BLUETOOTH, "Bluetooth", "bluetooth");
+            case TOP_PROJECTION: {
+                Item it = action(APP, TOP_PROJECTION, Ui.tr("Projection"), "projection");
+                it.pkg = projectionPackage(Prefs.app());
+                return it;
+            }
             default: return action(SETTINGS, TOP_SETTINGS, Ui.tr("light|Settings"), "settings");
         }
     }
 
-    /** What can go in the top buttons, as {key, name}. */
+    /** What can go in the top buttons on this TV, as {key, name}. */
     static List<String[]> topCandidates() {
         List<String[]> out = new ArrayList<>();
-        for (String key : TOP_DEFAULT) out.add(new String[] {key, topButton(key).label});
+        for (String key : TOP_ALL) if (topAvailable(key)) out.add(new String[] {key, topButton(key).label});
         return out;
+    }
+
+    private static boolean topAvailable(String key) {
+        Context c = Prefs.app();
+        if (c == null) return true;
+        switch (key) {
+            case TOP_WIFI: case TOP_BLUETOOTH: return panelIntent(c.getPackageManager(), key) != null;
+            case TOP_PROJECTION: return projectionPackage(c) != null;
+            default: return true;
+        }
+    }
+
+    /**
+     * System settings screens, in the order tried: Android's own, then the ones some boards ship instead (Amlogic
+     * projectors with the HTC/JM launcher have no Bluetooth screen of Android's, only their settings app's).
+     */
+    private static final String[][] PANELS = {
+        {TOP_WIFI, Settings.ACTION_WIFI_SETTINGS, "action.htcsettings.networking"},
+        {TOP_BLUETOOTH, Settings.ACTION_BLUETOOTH_SETTINGS, "action.htcsettings.bluetooth"},
+    };
+
+    static Intent panelIntent(PackageManager pm, String key) {
+        for (String[] p : PANELS) {
+            if (!p[0].equals(key)) continue;
+            for (int i = 1; i < p.length; i++) {
+                Intent intent = new Intent(p[i]);
+                if (intent.resolveActivity(pm) != null) return intent;
+            }
+        }
+        return null;
+    }
+
+    /** The projector's keystone and projection app (UNLISTED), or null on a TV that has none. */
+    private static String projectionPackage(Context c) {
+        if (c == null) return null;
+        PackageManager pm = c.getPackageManager();
+        for (String[] u : UNLISTED) if (unlistedIntent(pm, u[0]) != null) return u[0];
+        return null;
     }
 
     /** Live TV, the HDMI inputs with a device sending a signal, and All Apps. */
@@ -428,6 +481,9 @@ final class HomeApps {
                 break;
             case ANDROID_SETTINGS:
                 intent = new Intent(Settings.ACTION_SETTINGS);
+                break;
+            case PANEL:
+                intent = panelIntent(a.getPackageManager(), it.key);
                 break;
             default:
                 return false;
