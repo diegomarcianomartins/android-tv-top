@@ -78,6 +78,11 @@ final class HomeMode {
         // KTC (NextStar; MediaTek)
         "tv.anoki.acr.controller",                                                    // Anoki ACR: watches what's on screen
         "com.mediatek.tv.retaildemo", "com.electronic.manual",                        // store demo, manual
+        // Generic Amlogic projectors (HTC/JM launcher, t950s, Android 13)
+        "com.ht1.launcher", "com.jiumao.screen.systemadplayer",                       // ad screensavers
+        "com.master.tv.market", "com.overseas.store.appstore",                        // TvMarket, Emotn Store: promo app stores
+        "com.abc.ninja",                                                              // "keychain": silent app installer
+        "com.nmvdo.tv",                                                               // "Netfix": lookalike, installs apps
     };
 
     /** The voice assistant, only with disable_assistant=true in config.properties (the mic button stops working). */
@@ -136,7 +141,12 @@ final class HomeMode {
         "com.fengmi.projector.imaging", "com.fengmi.platform", "com.fengmi.Autopair", "com.fengmi.fmsettings",
         "com.fengmi.testsuite", "android.autoinstalls.config.fomovie",
         "uk.co.freeview.tifbridge",
-        "uk.co.freeview.mdsclient", "uk.co.freeview.fvpconfigauth"));
+        "uk.co.freeview.mdsclient", "uk.co.freeview.fvpconfigauth",
+        // Generic Amlogic projectors (HTC/JM launcher): system service, HDMI input and its settings, keystone, remote
+        // keyboard and air mouse, settings (it saves the Wi-Fi), updates, factory menu
+        "com.droidlogic", "com.droidlogic.tvinput", "com.droidlogic.android.tv", "com.droidlogic.droidlivetvsettings",
+        "com.droidlogic.tv.settings", "com.droidlogic.inputmethod.remote", "com.droidlogic.updater",
+        "com.softwinner.tcorrection", "com.master.accessibility", "com.htc.htcsettings", "com.fb"));
 
     /**
      * Android's own pieces: with one of them off, a TV may not start again (a list that took the permission

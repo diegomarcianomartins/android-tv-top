@@ -114,6 +114,8 @@ final class HomeApps {
             "com.Smartdevice.emanual",              // Skyworth: user manual
             "com.google.android.videos",            // Google Play Movies (discontinued)
             "com.disney.starplus",                  // Star+ (merged into Disney+)
+            "com.master.apps",                      // Amlogic projectors: the stock launcher's app grid
+            "com.fb",                               // Amlogic projectors: JMFactory (factory menu)
             "com.tcl.exhibit"));                    // TCL: T-Exhibition
 
     private static final Map<String, Bitmap> TILES = new HashMap<>();   // key → ready card
