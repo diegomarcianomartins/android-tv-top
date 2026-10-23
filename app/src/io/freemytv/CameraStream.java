@@ -66,6 +66,7 @@ final class CameraStream implements Runnable {
     // Video
     private boolean hevc;
     private boolean software;          // decoding on the processor (asked for, or no hardware decoder left)
+    private final boolean askedSoftware;
     private final String sub;
     private byte[] vps, sps, pps;
     private MediaCodec codec;
@@ -88,7 +89,7 @@ final class CameraStream implements Runnable {
      */
     CameraStream(String url, boolean preferMain, boolean software, int index, SurfaceTexture texture,
             Listener listener) {
-        this.software = software;
+        this.software = askedSoftware = software;
         sub = url;
         String main = CameraActivity.mainStream(url);
         // On the processor, only the substream: a main stream (2K, H.265) is too much for it and breaks into blocks.
@@ -172,6 +173,9 @@ final class CameraStream implements Runnable {
                 which = 0;
                 AppLog.w(label + ": no picture, trying again in 5 minutes");
             }
+            // Na próxima tentativa, o hardware de novo: o que ocupava os decodificadores (as câmeras da tela inicial)
+            // pode ter parado.
+            software = askedSoftware;
             try {
                 Thread.sleep(good ? RETRY_MS : DEAD_RETRY_MS);
             } catch (InterruptedException e) {

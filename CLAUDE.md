@@ -208,9 +208,13 @@ desligado e root de fábrica (`SuperUser`). O que se aprendeu:
 - SELinux ligado: o app não lê `/proc/stat` nem a temperatura. O `SystemStats` lê o `/proc/stat` pelo ADB da própria TV
   (só no modo Free My TV, sem pedir permissão de novo); a temperatura nem o shell lê.
 - Sem decodificador H.265: a tela cheia das câmeras cai do stream principal para o substream.
-- Poucos decodificadores de vídeo: com a câmera flutuante no hardware, o YouTube ficava preto. Na TCL ela decodifica
-  pelo processador (`OMX.google.h264.decoder`), e os dois rodam juntos. O scrcpy também ocupa o hardware de vídeo
-  (o codificador): feche-o antes de assistir vídeos nessa TV.
+- Poucos decodificadores de vídeo (2 na C06). Uma câmera sem decodificador de hardware livre fica no substream e
+  decodifica pelo processador, e na tentativa seguinte tenta o hardware de novo (nunca o stream principal de 2K em
+  H.265 pelo processador: tomou a memória da TV de 1 GB inteira). Na janela flutuante, o hardware primeiro: na C06 o
+  decodificador pelo processador trava a cada ~6 s ("queue exceeded timeout"). O scrcpy também ocupa o hardware de
+  vídeo (o codificador): feche-o antes de assistir vídeos nessas TVs.
+- A C06 (940 MB) travou com 4 câmeras, a janela flutuante e o YouTube juntos: memória no limite. Nela, menos câmeras
+  na tela inicial (ou "Desativar") e o botão de câmeras.
 
 ## O código
 
@@ -247,6 +251,10 @@ desligado e root de fábrica (`SuperUser`). O que se aprendeu:
   controle; OK abre `CameraActivity` em tela cheia, no stream principal, com ←/→ para trocar. Uma câmera que não
   responde vira um quadro escuro e só é tentada de novo em 5 minutos; um substream que não responde cai para o stream
   principal. As câmeras esperam 150 s desde o boot para começar.
+  Um botão do controle (Botões do Controle → Câmeras; na TCL, Globoplay = 4097 e Disney+ = 4141 também entram na
+  lista) abre a primeira câmera em tela cheia de qualquer lugar. Apertado de novo, a câmera da tela vai para a janela
+  flutuante e volta o app de antes: a `CameraActivity` é `singleTask` numa tarefa própria, e o segundo aperto chega
+  com ela pausada (onPause, onNewIntent, onResume), por isso ela olha se está visível (onStart/onStop).
 - Texto na tela: `Ui.tr("English")`, traduzido a partir de `app/assets/i18n/<idioma>.json` (com o inglês como chave;
   uma busca num HashMap, inglês quando um idioma não tem a frase). Texto montado em tempo de execução é um modelo:
   `Ui.trf("{n} min ago", "n", 12)`, nunca palavras concatenadas. Uma chave `"contexto|Texto"` é o mesmo inglês onde um
@@ -260,7 +268,8 @@ desligado e root de fábrica (`SuperUser`). O que se aprendeu:
   isso em todos os catálogos (ou `--fill` com `ANTHROPIC_API_KEY`, que manda só as frases), e mantenha os marcadores
   como estão. Rode `python3 tools/translate.py --check` para validar todos os catálogos sem gravar arquivos.
   Ainda sem idiomas da direita para a esquerda (o layout não é espelhado); CJK e devanágari usam a fonte do sistema.
-  Comentários no código em inglês, curtos, só onde o porquê não é óbvio.
+  Comentários novos no código em português (os antigos, do projeto original, ficam em inglês), curtos, só onde o
+  porquê não é óbvio.
 - As configurações vêm do `config.properties` pelo `out/gen/io/freemytv/Config.java` gerado (nunca edite esse).
   O que a pessoa muda na TV (`Prefs`: Home Settings, Shelf, Remote Buttons) vale mais que esses valores iniciais.
 - Os botões de app do controle (`RemoteKeys`, `RemoteKeyService`) usam os códigos de tecla de cada marca: só rodam em

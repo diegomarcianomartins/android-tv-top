@@ -20,11 +20,16 @@ import java.util.List;
 
 /**
  * One DVR camera full screen (OK on a camera of the home screen). ← and → go to the previous and next camera, Back
- * returns. It asks for the camera's main stream (sharper) where the address says which one it is, then the substream when
- * the main one doesn't play.
+ * returns. It asks for the camera's main stream (sharper) where the address says which one it is, then the substream
+ * when the main one doesn't play.
+ * Um botão do controle definido como Câmeras (Botões do Controle) abre a primeira câmera de qualquer lugar; apertado de
+ * novo aqui, a câmera da tela continua na janela flutuante e o app que estava aberto antes volta. Fica numa tarefa
+ * própria, para que esse app esteja logo atrás dela.
  */
 public final class CameraActivity extends Activity {
     private static final String EXTRA_INDEX = "index";
+    /** O botão do controle definido como Câmeras (RemoteKeys, no processo :keys). */
+    static final String ACTION_KEY = "io.freemytv.action.CAMERA_KEY";
 
     private List<String> urls;
     private int index;
@@ -32,7 +37,7 @@ public final class CameraActivity extends Activity {
     private TextureView view;
     private Tile tile;
     private TextView title, status;
-    private boolean resumed;
+    private boolean resumed, visible;
 
     static void open(Context c, int index) {
         Intent i = new Intent(c, CameraActivity.class).putExtra(EXTRA_INDEX, index);
@@ -55,7 +60,7 @@ public final class CameraActivity extends Activity {
             finish();
             return;
         }
-        index = Math.max(0, Math.min(urls.size() - 1, getIntent().getIntExtra(EXTRA_INDEX, 0)));
+        index = clamp(getIntent().getIntExtra(EXTRA_INDEX, 0));
         root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
         float k = getResources().getDisplayMetrics().widthPixels / 1920f;
@@ -75,6 +80,39 @@ public final class CameraActivity extends Activity {
         lp.setMargins(margin, margin, margin, margin);
         root.addView(t, lp);
         return t;
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        // Com a tela à mostra, o Android pausa a activity antes de entregar o intent (onPause, onNewIntent,
+        // onResume): por isso "visível" (onStart/onStop) e não "em primeiro plano".
+        if (!visible || urls == null) {
+            if (urls != null && intent.hasExtra(EXTRA_INDEX)) index = clamp(intent.getIntExtra(EXTRA_INDEX, 0));
+            return;
+        }
+        if (ACTION_KEY.equals(intent.getAction())) {
+            // O botão de novo: esta câmera vai para a janela flutuante, e volta o app que estava aberto.
+            int i = index;
+            drop();
+            CameraPopup.press(this, i);
+            finish();
+        } else if (intent.hasExtra(EXTRA_INDEX)) {
+            index = clamp(intent.getIntExtra(EXTRA_INDEX, 0));     // o onResume logo depois mostra esta
+        }
+    }
+
+    private int clamp(int i) {
+        return Math.max(0, Math.min(urls.size() - 1, i));
+    }
+
+    @Override protected void onStart() {
+        super.onStart();
+        visible = true;
+    }
+
+    @Override protected void onStop() {
+        super.onStop();
+        visible = false;
     }
 
     @Override protected void onResume() {

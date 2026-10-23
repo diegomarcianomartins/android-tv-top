@@ -107,6 +107,8 @@
             android:name=".CameraActivity"
             android:process=":home"
             android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity="io.freemytv.cameras"
             android:excludeFromRecents="true"
             android:screenOrientation="landscape"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density|fontScale|locale|layoutDirection"

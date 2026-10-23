@@ -10,7 +10,9 @@ import android.view.KeyEvent;
 /**
  * The remote's app buttons on TCL TVs. The stock home screen opens the apps for Netflix, YouTube and Prime (and TCL
  * Channel); with it off, the keys still arrive, so we open the app the person picked (Settings > Remote Buttons).
- * Disney and Globoplay are opened by the system itself, so they are not listed. The YouTube button (BUTTON_3) never
+ * Disney+ e Globoplay a própria TV abre: ficam com ela até a pessoa escolher outra coisa. Qualquer um dos botões pode
+ * abrir as câmeras do DVR em tela cheia (Prefs.CAMERAS).
+ * The YouTube button (BUTTON_3) never
  * reaches an app's window; only the accessibility service's key filter (RemoteKeyService) sees it.
  * On Vestel TVs and Formovie (Xiaomi) projectors only the Netflix button is ours: the system opens Netflix itself (a
  * global key, after the filter).
@@ -59,7 +61,11 @@ final class RemoteKeys {
         if (!ours) return false;
         String pkg = Prefs.keyApp(keyCode);
         if (pkg.isEmpty()) return false;   // "Nothing": the key goes on as if we weren't here
-        if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
+        if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0 && pkg.equals(Prefs.CAMERAS)) {
+            AppLog.w("remote key " + e.getKeyCode() + " -> cameras");
+            c.startActivity(new Intent(c, CameraActivity.class).setAction(CameraActivity.ACTION_KEY)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } else if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
             Intent intent = launchIntent(c.getPackageManager(), pkg);
             AppLog.w("remote key " + e.getKeyCode() + " -> " + pkg + (intent == null ? " (not installed)" : ""));
             if (intent != null) c.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
