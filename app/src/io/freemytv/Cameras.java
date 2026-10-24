@@ -129,7 +129,8 @@ final class Cameras extends ViewGroup {
 
     /** Which choice is in use (an index of grids). */
     int choice() {
-        int saved = ui.getInt("cameraGrid", grids[0]);
+        // Sem escolha ainda: DESLIGADO (nenhum vídeo rodando até a pessoa ligar as câmeras).
+        int saved = ui.getInt("cameraGrid", 0);
         for (int i = 0; i < grids.length; i++) if (grids[i] == saved) return i;
         return 0;
     }
