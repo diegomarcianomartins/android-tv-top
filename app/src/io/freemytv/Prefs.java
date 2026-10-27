@@ -195,6 +195,51 @@ final class Prefs {
         }
     }
 
+    // MARK: - Controle pelo celular
+
+    // Num arquivo, como a tela de descanso: o servidor (PhoneRemote) roda no processo principal e as configurações no
+    // :home. Primeira linha "on" quando ligado, segunda o código que o QR leva. Desligar e ligar de novo troca o código.
+    private static File phoneFile() {
+        return new File(app.getFilesDir(), "phone-remote.txt");
+    }
+
+    private static String[] phoneLines() {
+        try (BufferedReader r = new BufferedReader(new FileReader(phoneFile()))) {
+            String on = r.readLine(), code = r.readLine();
+            if ("on".equals(on) && code != null && !code.isEmpty()) return new String[] {on, code};
+        } catch (IOException ignored) {
+        }
+        return null;
+    }
+
+    static boolean phoneRemote() {
+        return phoneLines() != null;
+    }
+
+    /** O código que a página do celular precisa trazer, ou "" com o controle desligado. */
+    static String phoneRemoteCode() {
+        String[] l = phoneLines();
+        return l == null ? "" : l[1];
+    }
+
+    static void setPhoneRemote(boolean on) {
+        if (!on) {
+            //noinspection ResultOfMethodCallIgnored
+            phoneFile().delete();
+            version++;
+            return;
+        }
+        String letters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";   // sem 0, 1, I e O, que se confundem
+        java.security.SecureRandom random = new java.security.SecureRandom();
+        StringBuilder code = new StringBuilder();
+        for (int i = 0; i < 10; i++) code.append(letters.charAt(random.nextInt(letters.length())));
+        try (FileOutputStream out = new FileOutputStream(phoneFile())) {
+            out.write(("on\n" + code + "\n").getBytes(StandardCharsets.UTF_8));
+            version++;
+        } catch (IOException ignored) {
+        }
+    }
+
     // MARK: - Remote buttons
 
     private static String defaultApp(int keyCode) {

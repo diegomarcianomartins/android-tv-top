@@ -33,8 +33,8 @@ import javax.crypto.Cipher;
 /**
  * ADB client that talks to the TV itself (127.0.0.1:5555, open while debugging is on). It's what lets the app switch
  * the home screen and the screensaver, and turn off apps, without a computer. The first time, the TV asks
- * "Allow USB debugging?" and you accept with "Always allow". Only HomeMode uses it, and only with its own fixed
- * commands (nothing from outside).
+ * "Allow USB debugging?" and you accept with "Always allow". Only HomeMode and PhoneRemote use it, and only with their
+ * own fixed commands (nothing from outside: the phone remote sends key codes from a fixed list and shelf positions).
  * Protocol: https://android.googlesource.com/platform/packages/modules/adb/+/refs/heads/main/protocol.txt
  */
 final class Adb implements Closeable {
@@ -130,7 +130,10 @@ final class Adb implements Closeable {
         ByteArrayOutputStream result = new ByteArrayOutputStream();
         while (true) {
             Message m = read();
-            if (m.arg1 != local) continue;
+            if (m.arg1 != local) {
+                if (m.command == WRTE) send(OKAY, m.arg1, m.arg0, null);   // a Stream's echo: acknowledged, or it stalls
+                continue;
+            }
             if (m.command == OKAY) {
                 remote = m.arg0;
             } else if (m.command == WRTE) {
@@ -141,6 +144,52 @@ final class Adb implements Closeable {
                 send(CLSE, local, m.arg0, null);
                 return result.toString("UTF-8");
             }
+        }
+    }
+
+    /**
+     * A shell command that stays running, to which lines can be sent (PhoneRemote's key injector, so that a key doesn't
+     * start a new process). Only one thing may use the connection at a time, as with shell().
+     */
+    final class Stream {
+        private final int local, remote;
+        private final StringBuilder output = new StringBuilder();
+
+        private Stream(int local, int remote) {
+            this.local = local;
+            this.remote = remote;
+        }
+
+        void write(String line) throws IOException {
+            send(WRTE, local, remote, (line + "\n").getBytes(StandardCharsets.UTF_8));
+            while (true) {
+                Message m = read();
+                if (m.arg1 != local) continue;
+                if (m.command == OKAY) return;
+                if (m.command == WRTE) {
+                    if (output.length() < 2000) output.append(new String(m.data, StandardCharsets.UTF_8));
+                    send(OKAY, local, m.arg0, null);
+                } else if (m.command == CLSE) {
+                    throw new IOException(Ui.tr("ADB refused the command"));
+                }
+            }
+        }
+
+        /** What the command printed so far (an error in it shows here). */
+        String output() {
+            return output.toString();
+        }
+    }
+
+    /** Starts `command` in the TV's shell and leaves it running. */
+    Stream stream(String command) throws IOException {
+        int local = nextLocalId++;
+        send(OPEN, local, 0, ("shell:" + command + "\0").getBytes(StandardCharsets.UTF_8));
+        while (true) {
+            Message m = read();
+            if (m.arg1 != local) continue;
+            if (m.command == OKAY) return new Stream(local, m.arg0);
+            if (m.command == CLSE) throw new IOException(Ui.tr("ADB refused the command"));
         }
     }
 

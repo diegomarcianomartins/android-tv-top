@@ -139,7 +139,8 @@ uma atualização assinada por outro. `python3 webos/build.py --generic` gera o 
 
 ## Adaptando para outra TV
 
-Leia primeiro, mude depois. Comandos só de leitura que mostram o que a TV tem:
+Leia primeiro, mude depois. `tools/diagnose.sh <IP>` junta tudo isso num relatório só de leitura (`out/diagnose-<modelo>.txt`,
+com IPs e MACs mascarados, seguro de colar num chat ou issue). Os comandos só de leitura que mostram o que a TV tem:
 
 ```bash
 adb shell getprop ro.product.brand; adb shell getprop ro.product.model; adb shell getprop ro.build.version.release
@@ -275,6 +276,17 @@ desligado e root de fábrica (`SuperUser`). O que se aprendeu:
   lista) abre a primeira câmera em tela cheia de qualquer lugar. Apertado de novo, a câmera da tela vai para a janela
   flutuante e volta o app de antes: a `CameraActivity` é `singleTask` numa tarefa própria, e o segundo aperto chega
   com ela pausada (onPause, onNewIntent, onResume), por isso ela olha se está visível (onStart/onStop).
+- **Controle pelo celular** (Ajustes do Início → Controle pelo celular, desligado por padrão): `PhoneRemote` é um
+  servidor HTTP minúsculo (porta 8765, só rede local) num serviço em primeiro plano no processo principal; o QR
+  (`Qr`, codificador próprio, versões 1 a 6) leva ao endereço com um código de 10 letras. Desligar e ligar de novo
+  troca o código; o Original desliga o servidor. O estado fica em `phone-remote.txt` (`Prefs`), pelo mesmo motivo do
+  `screensaver.txt`. Nada do celular vira comando: as teclas vêm de uma lista fixa (`KEYS`) e os apps do índice da
+  barra, abertos pelo componente exato (`am start -p pacote` falha: a intent implícita exige a categoria DEFAULT, que
+  as telas de lançamento não têm). As teclas vão por `KeyInjector`, um processo Java que o `PhoneRemote` deixa vivo no
+  shell da TV pelo ADB dela (`app_process` com o próprio APK, `InputManager` por reflexão, como o scrcpy): o
+  `input keyevent` sobe uma JVM por tecla e leva quase 2 s na UnionTV; assim cada tecla leva 10 a 50 ms. Se o
+  injetor falhar numa TV, cai para o `input keyevent`. O `Adb.shell` confirma a saída de um `Adb.Stream` aberto, senão
+  o eco do terminal trava o fluxo.
 - Texto na tela: `Ui.tr("English")`, traduzido a partir de `app/assets/i18n/<idioma>.json` (com o inglês como chave;
   uma busca num HashMap, inglês quando um idioma não tem a frase). Texto montado em tempo de execução é um modelo:
   `Ui.trf("{n} min ago", "n", 12)`, nunca palavras concatenadas. Uma chave `"contexto|Texto"` é o mesmo inglês onde um

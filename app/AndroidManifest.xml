@@ -122,6 +122,11 @@
             android:process=":keys"
             android:exported="false" />
 
+        <!-- The phone remote's little web server (Settings > Home Settings > Phone Remote). -->
+        <service
+            android:name=".PhoneRemote"
+            android:exported="false" />
+
         <service
             android:name=".CameraPopup"
             android:process=":home"

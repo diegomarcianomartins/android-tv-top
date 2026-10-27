@@ -476,6 +476,7 @@ final class HomeMode {
             } catch (IOException e) {
                 AppLog.w("remote buttons service: " + e.getMessage());
             }
+            PhoneRemote.set(c, false);   // o Original traz tudo de volta: sem servidor na TV
             s = state(c);
             s.put("mode", ORIGINAL).put("since", System.currentTimeMillis()).put("homeReverted", false)
                     .put("disabled", new JSONArray(failed)).remove("keptOff");

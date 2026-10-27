@@ -134,6 +134,11 @@ public class SettingsActivity extends Activity {
         private final List<String[]> shelfRows = new ArrayList<>();
         private final List<String> shelfOrder = new ArrayList<>();
         private boolean editingTop;
+        private boolean phoneOn;      // Controle pelo celular ligado
+        private String phoneUrl;      // o endereço do QR (null: desligado ou sem rede)
+        private String qrFor;
+        private boolean[][] qr;
+        private final Paint qrPaint = new Paint();
         private int pickFor, pickCurrent, pickScroll;   // pickFor: the remote button (index + 1)
         private int keyScroll;   // Botões do Controle: a primeira linha à mostra (um controle inteiro passa de nove)
         private static final int PICK_CITY = 0, PICK_LANGUAGE = -1;
@@ -159,6 +164,12 @@ public class SettingsActivity extends Activity {
                 state = HomeMode.state(getContext());
                 hasKey = Recs.hasKey(getContext());
                 recs = Recs.status(getContext());
+                phoneOn = Prefs.phoneRemote();
+                phoneUrl = phoneOn ? PhoneRemote.url() : null;
+                if (phoneUrl == null ? qrFor != null : !phoneUrl.equals(qrFor)) {
+                    qrFor = phoneUrl;
+                    qr = phoneUrl == null ? null : Qr.encode(phoneUrl);
+                }
                 boolean nowBusy = !busyText().isEmpty();
                 if (nowBusy) pendingAt = 0;
                 // A switch just ended: TalkBack reads how it went (the newest notice).
@@ -255,6 +266,11 @@ public class SettingsActivity extends Activity {
             }
         }
 
+        /** Ajustes do Início com todas as linhas (a do dólar e a do celular) passa de 1080 px: as linhas encolhem um pouco. */
+        private float rowH() {
+            return screen == HOME_SETTINGS && settingLabels().length > 11 ? 62 : LIST_ROW_H;
+        }
+
         private RectF rowBox(int row) {
             float top, height;
             if (screen == MAIN) {
@@ -264,8 +280,8 @@ public class SettingsActivity extends Activity {
                 top = LIST_TOP + 20 + row * (CHOICE_H + ROW_GAP);
                 height = CHOICE_H;
             } else {
-                top = LIST_TOP + 20 + row * (LIST_ROW_H + LIST_ROW_GAP);
-                height = LIST_ROW_H;
+                top = LIST_TOP + 20 + row * (rowH() + LIST_ROW_GAP);
+                height = rowH();
             }
             focusBox.set(LIST_X * k, top * k, LIST_R * k, (top + height) * k);
             return focusBox;
@@ -377,6 +393,8 @@ public class SettingsActivity extends Activity {
             if (remoteKey != 0) {
                 tmp.set(cx - 300 * k, 90 * k, cx + 300 * k, h - 90 * k);
                 Remotes.draw(c, Remotes.CURRENT, tmp, remoteKey, 0.5f + 0.5f * (float) Math.sin(seconds * 3.5f));
+            } else if (screen == HOME_SETTINGS && focus == PHONE_ROW && phoneOn) {
+                drawPhoneQr(c, cx);
             } else {
                 Symbols.draw(getContext(), c, "sparkles", cx, 400 * k, 150 * k, 0xEBFFFFFF);
                 c.drawText("Free My TV", cx, 612 * k, title);
@@ -385,6 +403,27 @@ public class SettingsActivity extends Activity {
             }
 
             if (screen == MAIN) drawMain(c, seconds); else if (screen == HOME_CHOICE) drawChoice(c); else if (screen == PICKER) drawPicker(c); else if (screen == SHELF_EDIT) drawShelfEditor(c); else drawList(c);
+        }
+
+        /** Controle pelo celular: o QR do endereço da página, com o endereço escrito embaixo. */
+        private void drawPhoneQr(Canvas c, float cx) {
+            c.drawText(Ui.tr("Phone Remote"), cx, 190 * k, title);
+            if (qr == null) return;
+            float box = 480 * k, top = 240 * k;
+            tmp.set(cx - box / 2, top, cx + box / 2, top + box);
+            qrPaint.setColor(0xFFFFFFFF);
+            c.drawRoundRect(tmp, 24 * k, 24 * k, qrPaint);
+            int n = qr.length;
+            float cell = box / (n + 6);   // 3 módulos de margem de cada lado
+            qrPaint.setColor(0xFF000000);
+            for (int y = 0; y < n; y++) {
+                for (int x = 0; x < n; x++) {
+                    if (qr[y][x]) c.drawRect(tmp.left + (x + 3) * cell, top + (y + 3) * cell,
+                            tmp.left + (x + 4) * cell, top + (y + 4) * cell, qrPaint);
+                }
+            }
+            c.drawText(Ui.tr("Point the phone's camera at the code."), cx, top + box + 56 * k, subtitle);
+            c.drawText(phoneUrl, cx, top + box + 102 * k, version);
         }
 
         private void drawMain(Canvas c, float seconds) {
@@ -663,7 +702,7 @@ public class SettingsActivity extends Activity {
             return v.equals(Prefs.SAVER_CAMERAS) ? Ui.tr("Cameras") : v.equals(Prefs.SAVER_OFF) ? Ui.tr("Off") : "Free My TV";
         }
         /** Home Settings: language, temperature, theme, sounds, weather, city, quotes, then one row per coin. */
-        private static final int CITY_ROW = 5, COIN_ROWS = 7;
+        private static final int CITY_ROW = 5, PHONE_ROW = 7, COIN_ROWS = 8;
 
         private boolean dollar() {
             return "BRL".equalsIgnoreCase(Config.CURRENCY.trim());
@@ -678,6 +717,7 @@ public class SettingsActivity extends Activity {
             l.add(Ui.tr("Weather widget"));
             l.add(Ui.tr("City"));
             l.add(Ui.tr("Quotes widget"));
+            l.add(Ui.tr("Phone Remote"));
             l.add("Bitcoin");
             l.add("Ethereum");
             l.add("Solana");
@@ -698,6 +738,7 @@ public class SettingsActivity extends Activity {
             v[4] = onOff(Prefs.weather());
             v[CITY_ROW] = !cityStatus.isEmpty() ? cityStatus : Prefs.city().isEmpty() ? "—" : Prefs.city();
             v[6] = onOff(Prefs.quotes());
+            v[PHONE_ROW] = onOff(phoneOn);
             // No quotes widget, nowhere to show prices: the coins read as off (and stay locked) until it is back on.
             for (int i = COIN_ROWS; i < v.length; i++) v[i] = onOff(Prefs.quotes() && Prefs.coin(i - COIN_ROWS));
             return v;
@@ -786,6 +827,11 @@ public class SettingsActivity extends Activity {
                 case 4: Prefs.setWeather(!Prefs.weather()); break;
                 case CITY_ROW: return;
                 case 6: Prefs.setQuotes(!Prefs.quotes()); break;
+                case PHONE_ROW:
+                    phoneOn = !phoneOn;
+                    PhoneRemote.set(getContext(), phoneOn);   // desligar e ligar de novo troca o código do QR
+                    phoneUrl = phoneOn ? PhoneRemote.url() : null;
+                    return;
                 default:
                     if (!Prefs.quotes()) return;
                     Prefs.setCoin(focus - COIN_ROWS, !Prefs.coin(focus - COIN_ROWS));
@@ -995,10 +1041,11 @@ public class SettingsActivity extends Activity {
             c.drawText(keys ? Ui.tr("Remote Buttons") : Ui.tr("Home Settings"),
                     LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
             int rows = keys ? rowCount() : labels.length, first = keys ? keyScroll : 0;
+            float rowH = rowH();
             for (int row = 0; row < rows; row++) {
                 int i = first + row;
-                float y = (LIST_TOP + 20 + row * (LIST_ROW_H + LIST_ROW_GAP)) * k;
-                rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
+                float y = (LIST_TOP + 20 + row * (rowH + LIST_ROW_GAP)) * k;
+                rowRect.set(LIST_X * k, y, LIST_R * k, y + rowH * k);
                 float f = drawRowBackground(c, row);
                 rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
                 boolean locked = !keys && i >= COIN_ROWS && !Prefs.quotes();
@@ -1009,7 +1056,7 @@ public class SettingsActivity extends Activity {
                 c.drawText(values[i], rowRect.right - 30 * k, base, rowValue);
             }
             Paint hint = Ui.text(Ui.regular, 23 * k, 0x8CFFFFFF);
-            float hy = (LIST_TOP + 20 + rows * (LIST_ROW_H + LIST_ROW_GAP) + 36) * k;
+            float hy = (LIST_TOP + 20 + rows * (rowH + LIST_ROW_GAP) + 36) * k;
             String more = keys && labels.length > rows ? (keyScroll + focus + 1) + " / " + labels.length + "  ·  " : "";
             c.drawText(more + Ui.tr("OK or the arrows change the value."), LIST_X * k + 30 * k, hy, hint);
             if (keys) {

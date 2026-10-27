@@ -173,6 +173,21 @@ final class HomeApps {
         return out;
     }
 
+    /** The shelf as {package, name}, with no images (the phone remote lists it). */
+    static List<String[]> shelfNames(Context c) {
+        List<String[]> out = new ArrayList<>();
+        PackageManager pm = c.getPackageManager();
+        for (String pkg : shelfPackages(c)) {
+            Intent launch = launchIntent(pm, pkg);
+            if (launch == null) continue;
+            String[] d = known(pkg);
+            ResolveInfo ri = d == null ? pm.resolveActivity(launch, 0) : null;
+            out.add(new String[] {pkg, d != null ? d[1] : ri != null ? String.valueOf(ri.loadLabel(pm)) : pkg});
+            if (out.size() >= MAX_SHELF) break;
+        }
+        return out;
+    }
+
     /** Every app the shelf could hold, as {package, name}: the ones from SHELF first, then the other TV apps by name. */
     static List<String[]> shelfCandidates(Context c) {
         PackageManager pm = c.getPackageManager();
