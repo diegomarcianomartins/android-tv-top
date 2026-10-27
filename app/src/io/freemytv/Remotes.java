@@ -120,8 +120,31 @@ final class Remotes {
     private static Remote detect() {
         boolean tcl = "TCL".equalsIgnoreCase(Build.MANUFACTURER) || "TCL".equalsIgnoreCase(Build.BRAND);
         if (tcl && "C06".equalsIgnoreCase(Build.DEVICE)) return tclC06();
+        if (tcl && "UnionTV".equalsIgnoreCase(Build.DEVICE)) return tclUnionTV();
         if (Build.DEVICE.startsWith("t950s")) return amlogicProjector();
         return null;
+    }
+
+    /**
+     * TCL UnionTV (Realtek, Android 9): o controle com Netflix e Globoplay. O botão do Google (voz) não manda tecla
+     * nenhuma para a TV, então só aparece no desenho.
+     */
+    private static Remote tclUnionTV() {
+        return new Remote(322,
+                fixed(CIRCLE, 17, 27, 22, 22, "POWER"),
+                key(4077, "Settings button", 78, 27, "⚙"),
+                fixed(CIRCLE, 17, 59, 25, 25, "⌂"),
+                key(KEY_MENU, "Menu button", 78, 59, "≡"),
+                fixed(RING, 47, 113, 86, 86, "OK"),
+                fixed(CIRCLE, 17, 183, 25, 25, "←"),
+                key(KEY_TV_INPUT, "Input button", 78, 183, "⇥"),
+                fixed(CIRCLE, 17, 217, 25, 25, "G"),
+                fixed(PILL, 47, 232, 25, 56, "±"),
+                key(KEY_CHANNEL_UP, "Channel up button", 78, 217, "P+"),
+                key(4056, "Colors button", 17, 248, "⌨"),
+                key(KEY_CHANNEL_DOWN, "Channel down button", 78, 248, "P−"),
+                app(Prefs.KEY_NETFLIX, "Netflix button", 27, 291, "NETFLIX"),
+                app(Prefs.KEY_GLOBOPLAY, "Globoplay button", 70, 291, "globoplay"));
     }
 
     /** TCL C06 (MediaTek, Android 11): o controle com seis botões de app. */
