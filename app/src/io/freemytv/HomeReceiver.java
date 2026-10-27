@@ -17,10 +17,12 @@ public class HomeReceiver extends BroadcastReceiver {
         } else if (Intent.ACTION_BOOT_COMPLETED.equals(action)) {
             HomeMode.bootCheck(context);
             PhoneRemote.sync(context);
+            Reminders.process(context);   // o AlarmManager esquece os alarmes no reinício
         } else if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
             HomeMode.verify(context);   // app updated: complete Free My TV mode if something is missing
             HomeMode.ensureRemoteService(context, 3_000);
             PhoneRemote.sync(context);
+            Reminders.process(context);
         }
     }
 }

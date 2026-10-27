@@ -127,6 +127,15 @@
             android:name=".PhoneRemote"
             android:exported="false" />
 
+        <!-- Reminders made on the phone remote's page: the alarm, and the card over other apps when one is due. -->
+        <receiver
+            android:name=".Reminders$Alarm"
+            android:exported="false" />
+
+        <service
+            android:name=".ReminderPopup"
+            android:exported="false" />
+
         <service
             android:name=".CameraPopup"
             android:process=":home"

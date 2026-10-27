@@ -190,7 +190,7 @@ public final class PhoneRemote extends Service {
                 }
                 path = path.substring(0, q);
             }
-            if (!path.equals("/") && !path.equals("/key") && !path.equals("/app")) {
+            if (!path.equals("/") && !path.equals("/key") && !path.equals("/app") && !path.startsWith("/rem/")) {
                 reply(socket, 404, "text/plain", "not found");
                 return;
             }
@@ -200,6 +200,10 @@ public final class PhoneRemote extends Service {
             }
             if (path.equals("/")) {
                 reply(socket, 200, "text/html", page(query.get("k")));
+                return;
+            }
+            if (path.startsWith("/rem/")) {
+                reminders(socket, path, query);
                 return;
             }
             try {
@@ -238,6 +242,52 @@ public final class PhoneRemote extends Service {
         out.write(head.getBytes(StandardCharsets.ISO_8859_1));
         out.write(bytes);
         out.flush();
+    }
+
+    // MARK: - Lembretes
+
+    private void reminders(Socket socket, String path, Map<String, String> query) throws IOException {
+        try {
+            if (path.equals("/rem/list")) {
+                reply(socket, 200, "application/json", remindersJson());
+                return;
+            }
+            if (path.equals("/rem/add")) {
+                Reminders.add(this, Long.parseLong(query.get("a")), Integer.parseInt(query.get("r")), query.get("t"));
+            } else if (path.equals("/rem/del")) {
+                Reminders.delete(this, Long.parseLong(query.get("i")));
+            } else {
+                reply(socket, 404, "text/plain", "not found");
+                return;
+            }
+            reply(socket, 200, "text/plain", "ok");
+        } catch (NumberFormatException e) {
+            reply(socket, 400, "text/plain", "?");
+        } catch (IllegalArgumentException e) {
+            reply(socket, 400, "text/plain", String.valueOf(e.getMessage()));
+        }
+    }
+
+    private String remindersJson() {
+        StringBuilder sb = new StringBuilder("[");
+        for (Reminders.Item i : Reminders.list(this)) {
+            if (sb.length() > 1) sb.append(',');
+            sb.append("{\"i\":").append(i.id).append(",\"a\":").append(i.at).append(",\"r\":").append(i.repeat)
+                    .append(",\"t\":").append(json(i.text)).append('}');
+        }
+        return sb.append(']').toString();
+    }
+
+    /** Um texto como string de JSON; `<`, `>` e `&` também escapados, para ele nunca virar marcação. */
+    private static String json(String text) {
+        StringBuilder sb = new StringBuilder("\"");
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '"' || c == '\\') sb.append('\\').append(c);
+            else if (c < 0x20 || c == '<' || c == '>' || c == '&' || c == 0x2028 || c == 0x2029) sb.append(String.format("\\u%04x", (int) c));
+            else sb.append(c);
+        }
+        return sb.append('"').toString();
     }
 
     // MARK: - Ações
@@ -368,6 +418,11 @@ public final class PhoneRemote extends Service {
                 + "-webkit-tap-highlight-color:transparent}button:active{background:#5a5a5e}"
                 + ".ok{background:#f2f2f7;color:#1c1c1e;font-weight:600}.a{grid-template-columns:repeat(2,1fr)}"
                 + ".a button{height:56px}h2{font-size:15px;color:#888;margin:18px 4px 8px;font-weight:600}"
+                + "input,select{width:100%;box-sizing:border-box;height:48px;border:0;border-radius:12px;background:#2c2c2e;"
+                + "color:#f2f2f7;font:inherit;padding:0 12px;margin-bottom:8px;-webkit-user-select:text;user-select:text}"
+                + ".f2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.ri{display:flex;align-items:center;gap:8px;"
+                + "background:#1c1c1e;border-radius:12px;padding:8px 8px 8px 12px;margin-bottom:6px;font-size:16px}"
+                + ".ri span{flex:1;word-break:break-word}.ri button{height:40px;width:40px;border-radius:10px}"
                 + "#st{min-height:22px;text-align:center;color:#ffc266;font-size:15px;margin-bottom:8px}"
                 + "</style></head><body><main><h1>" + escape(Ui.tr("Phone Remote")) + "</h1><div id=\"st\"></div>"
                 + "<div class=\"g\"><i></i><button data-p=\"/key?n=up\" data-r=\"1\">&#9650;</button><i></i>"
@@ -381,18 +436,40 @@ public final class PhoneRemote extends Service {
                 + "<button data-p=\"/key?n=mute\">&#128263;</button>"
                 + "<button data-p=\"/key?n=volup\" data-r=\"1\">&#128266; +</button></div>"
                 + (shelf.isEmpty() ? "" : "<h2>" + escape(Ui.tr("Apps")) + "</h2><div class=\"g a\">" + apps + "</div>")
-                + "<script>(function(){var K='" + code + "',st=document.getElementById('st'),busy=0,timer=0;"
+                + "<h2>" + escape(Ui.tr("Reminders")) + "</h2><div id=\"rl\"></div>"
+                + "<input id=\"rt\" maxlength=\"100\" placeholder=\"" + escape(Ui.tr("Reminder")) + "\">"
+                + "<div class=\"f2\"><input id=\"rd\" type=\"date\"><input id=\"rh\" type=\"time\"></div>"
+                + "<select id=\"rr\"><option value=\"0\">" + escape(Ui.tr("Once")) + "</option><option value=\"1\">"
+                + escape(Ui.tr("Every day")) + "</option><option value=\"2\">" + escape(Ui.tr("Every week")) + "</option></select>"
+                + "<button id=\"ra\" class=\"ok\" style=\"width:100%\">" + escape(Ui.tr("Add")) + "</button>"
+                + "<script>(function(){var K='" + code + "',RN=['',"
+                + json(Ui.tr("Every day")) + "," + json(Ui.tr("Every week")) + "],st=document.getElementById('st'),busy=0,timer=0;"
+                + "function api(p,cb){var x=new XMLHttpRequest();x.open('GET',p+(p.indexOf('?')<0?'?':'&')+'k='+K,true);"
+                + "x.timeout=8000;x.onload=function(){cb(x.status,x.responseText)};"
+                + "x.onerror=x.ontimeout=function(){cb(0,'')};x.send()}"
                 + "function fire(b){if(busy>1)return;busy++;if(navigator.vibrate)navigator.vibrate(12);"
-                + "var x=new XMLHttpRequest(),p=b.getAttribute('data-p');"
-                + "x.open('GET',p+(p.indexOf('?')<0?'?':'&')+'k='+K,true);x.timeout=8000;"
-                + "x.onload=function(){busy--;st.textContent=x.status==200?'':x.responseText};"
-                + "x.onerror=x.ontimeout=function(){busy--};x.send()}"
+                + "api(b.getAttribute('data-p'),function(s,t){busy--;st.textContent=s==200?'':t})}"
                 + "function down(b){fire(b);if(b.getAttribute('data-r')){timer=setTimeout(function again(){fire(b);"
                 + "timer=setTimeout(again,220)},420)}}function up(){clearTimeout(timer)}"
                 + "var bs=document.getElementsByTagName('button');for(var i=0;i<bs.length;i++){(function(b){"
+                + "if(!b.getAttribute('data-p'))return;"
                 + "b.addEventListener('touchstart',function(e){e.preventDefault();down(b)});"
                 + "b.addEventListener('touchend',up);b.addEventListener('touchcancel',up);"
                 + "b.addEventListener('mousedown',function(){down(b)});b.addEventListener('mouseup',up);"
-                + "b.addEventListener('mouseleave',up)})(bs[i])}})()</script></main></body></html>";
+                + "b.addEventListener('mouseleave',up)})(bs[i])}"
+                + "function $(id){return document.getElementById(id)}function pad(n){return n<10?'0'+n:''+n}"
+                + "function load(){api('/rem/list',function(s,t){if(s!=200)return;var l=JSON.parse(t),el=$('rl');el.innerHTML='';"
+                + "for(var i=0;i<l.length;i++){(function(r){var d=document.createElement('div'),m=document.createElement('span'),"
+                + "x=document.createElement('button');d.className='ri';"
+                + "m.textContent=new Date(r.a).toLocaleString([],{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})"
+                + "+(r.r?' ('+RN[r.r]+')':'')+'  '+r.t;x.textContent='×';"
+                + "x.onclick=function(){api('/rem/del?i='+r.i,load)};d.appendChild(m);d.appendChild(x);el.appendChild(d)})(l[i])}})}"
+                + "var n=new Date(Date.now()+300000);$('rd').value=n.getFullYear()+'-'+pad(n.getMonth()+1)+'-'+pad(n.getDate());"
+                + "$('rh').value=pad(n.getHours())+':'+pad(n.getMinutes());"
+                + "$('ra').onclick=function(){var t=$('rt').value,d=$('rd').value.split('-'),h=$('rh').value.split(':');"
+                + "if(!t||d.length<3||h.length<2)return;"
+                + "var at=new Date(+d[0],+d[1]-1,+d[2],+h[0],+h[1]).getTime();"
+                + "api('/rem/add?t='+encodeURIComponent(t)+'&a='+at+'&r='+$('rr').value,function(s,b){"
+                + "if(s==200){$('rt').value='';st.textContent='';load()}else st.textContent=b})};load()})()</script></main></body></html>";
     }
 }

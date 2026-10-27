@@ -414,6 +414,7 @@ final class HomeMode {
             s.put("mode", FREE).put("since", System.currentTimeMillis()).put("homeReverted", false)
                     .put("disabled", new JSONArray(sorted(disabled))).put("setupHome", setupHome);
             save(c, s);
+            Reminders.process(c);   // os lembretes só disparam no modo Free My TV
             if (RemoteKeys.supported()) {
                 try {
                     remoteService(c, adb, true);
@@ -481,6 +482,7 @@ final class HomeMode {
             s.put("mode", ORIGINAL).put("since", System.currentTimeMillis()).put("homeReverted", false)
                     .put("disabled", new JSONArray(failed)).remove("keptOff");
             save(c, s);
+            Reminders.process(c);   // fora do Free My TV ficam guardados, sem alarme
             if (failed.isEmpty() && homeOk) {
                 notice(c, Ui.tr("Original mode: the factory home screen, screensaver and apps are back."));
             } else {

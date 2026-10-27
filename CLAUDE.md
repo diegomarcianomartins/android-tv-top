@@ -287,6 +287,15 @@ desligado e root de fábrica (`SuperUser`). O que se aprendeu:
   `input keyevent` sobe uma JVM por tecla e leva quase 2 s na UnionTV; assim cada tecla leva 10 a 50 ms. Se o
   injetor falhar numa TV, cai para o `input keyevent`. O `Adb.shell` confirma a saída de um `Adb.Stream` aberto, senão
   o eco do terminal trava o fluxo.
+- **Lembretes** (seção Lembretes da página do celular: texto, data, hora, uma vez/todo dia/toda semana): `Reminders`
+  guarda em `reminders.txt` (até 50) e agenda o próximo no `AlarmManager` (exato; sem permissão no Android 12+, o
+  inexato); `Reminders.Alarm` e o `HomeReceiver` (boot, atualização) chamam `process`, que dispara os vencidos (menos de
+  12 h de atraso), passa os repetidos para a próxima data mantendo a hora do relógio e apaga os de uma vez só.
+  `ReminderPopup` mostra o cartão no alto, sobre qualquer app (a mesma permissão da `CameraPopup`), sem foco nem toque,
+  30 s, com o som de notificação. Só disparam no modo Free My TV: fora dele ficam guardados sem alarme (o `HomeMode`
+  chama `process` ao ligar e ao voltar ao Original). O texto vem do celular e é só dado: limpo por `Reminders.clean`
+  (sem controle, 100 caracteres), desenhado em `TextView`, nunca vai para um comando; a lista sai em JSON com `<`, `>` e
+  `&` escapados. Para criar ou apagar é preciso o Controle pelo celular ligado; os criados disparam sem ele.
 - Texto na tela: `Ui.tr("English")`, traduzido a partir de `app/assets/i18n/<idioma>.json` (com o inglês como chave;
   uma busca num HashMap, inglês quando um idioma não tem a frase). Texto montado em tempo de execução é um modelo:
   `Ui.trf("{n} min ago", "n", 12)`, nunca palavras concatenadas. Uma chave `"contexto|Texto"` é o mesmo inglês onde um
