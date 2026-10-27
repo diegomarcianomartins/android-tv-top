@@ -6,6 +6,7 @@ config.properties
 # Tuya: the wizard's files hold device keys and the API secret
 devices.json
 tuya-devices.json
+tuya-cloud.json
 tuya-raw.json
 tinytuya.json
 snapshot.json

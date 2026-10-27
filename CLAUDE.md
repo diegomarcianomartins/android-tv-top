@@ -316,7 +316,15 @@ desligado e root de fábrica (`SuperUser`). O que se aprendeu:
   "Not a switch". Fala as versões 3.3, 3.4 e 3.5 (`TuyaConnection`; a 3.4 e a 3.5 começam com um aperto de mão de três mensagens que dá a
   chave de sessão: AES-ECB com HMAC-SHA256 na 3.4, AES-GCM nos quadros 0x6699 na 3.5, com o comando 13 para mudar e o 16 para
   perguntar). Conferida contra o `tinytuya` (o quadro de comando da 3.4 é idêntico byte a byte; o da 3.5 ele decifra) e
-  contra aparelhos de verdade; versões fora dessas aparecem como "Not supported yet". Alguns aparelhos nem aceitam a conexão TCP na 6668 (timeout) enquanto outro cliente ocupa o único espaço dela:
+  contra aparelhos de verdade; versões fora dessas aparecem como "Not supported yet".
+  **Nuvem como reserva** (`TuyaCloud`, `TuyaCloudSign`): alguns aparelhos anunciam por broadcast mas a TV não os alcança por
+  unicast (sem ping nem ARP, e o Smart Life os controla pela nuvem; já se viu com os da garagem). Para esses, e para os
+  que nunca anunciam, o app lê e comanda pela API da Tuya (`/v1.0/iot-03/devices/<id>/status` e `/commands`; os códigos
+  `switch_1` a `switch_8`, `switch` e `switch_led` viram os pontos de dados 1 a 8 e 20). Precisa do `tinytuya.json` do
+  `wizard` (apiKey, apiSecret, apiRegion) enviado por ADB para `tuya-cloud.json` na pasta do app: copiado para a área
+  privada e apagado do original, e nunca no log nem no git. A rede local vem primeiro; depois de uma falha ela só é
+  tentada de novo em 1 minuto, e a nuvem se lê no máximo a cada 30 s por aparelho (a cota do plano grátis). A assinatura
+  é conferida contra o `tinytuya`. Alguns aparelhos nem aceitam a conexão TCP na 6668 (timeout) enquanto outro cliente ocupa o único espaço dela:
   aparecem como "No response" e a lista tenta de novo a cada 10 s.
 - Texto na tela: `Ui.tr("English")`, traduzido a partir de `app/assets/i18n/<idioma>.json` (com o inglês como chave;
   uma busca num HashMap, inglês quando um idioma não tem a frase). Texto montado em tempo de execução é um modelo:

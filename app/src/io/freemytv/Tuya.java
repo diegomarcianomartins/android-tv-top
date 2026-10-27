@@ -56,6 +56,10 @@ final class Tuya {
         /** Os nomes das teclas, se o arquivo os der ("channels": {"1": "Luz", ...}); senão, o número. */
         final JSONObject channelNames;
         volatile String ip = "", version = "";
+        /** O estado veio da nuvem (não da rede local), e quando; os códigos da nuvem das teclas, na ordem de dps. */
+        volatile boolean viaCloud;
+        volatile long cloudAt, localFailedAt;
+        volatile String[] codes = new String[0];
         volatile int state = UNKNOWN;
         /** Os pontos de dados que ligam e desligam, e se cada um está ligado (iguais em tamanho). */
         volatile String[] dps = new String[0];
@@ -142,7 +146,10 @@ final class Tuya {
 
     private final Context app;
     private final List<Device> devices = new ArrayList<>();
+    /** Depois de uma falha na rede local, só tenta de novo daqui a tanto; a nuvem se lê de tempos em tempos (cota). */
+    private static final long LOCAL_RETRY_MS = 60_000, CLOUD_MS = 30_000;
     private final ExecutorService pool = Executors.newFixedThreadPool(4);
+    private volatile TuyaCloud cloud;   // null sem o arquivo de credenciais da nuvem
     private volatile Listener listener;
     private volatile boolean listening;
     private final List<DatagramSocket> sockets = new ArrayList<>();
@@ -180,8 +187,12 @@ final class Tuya {
     // MARK: - O arquivo
 
     private static File importFile(Context c) {
+        return importFile(c, "tuya-devices.json");
+    }
+
+    private static File importFile(Context c, String name) {
         File dir = c.getExternalFilesDir(null);
-        return dir == null ? null : new File(dir, "tuya-devices.json");
+        return dir == null ? null : new File(dir, name);
     }
 
     /** Importa o arquivo enviado por ADB (se houver) e lê a lista. Fora da thread da interface. */
@@ -220,7 +231,41 @@ final class Tuya {
             devices.addAll(found);
         }
         for (Device d : found) d.state = d.switchable() ? UNKNOWN : NOT_SWITCH;
+        loadCloud();
         changed();
+    }
+
+    /**
+     * As credenciais da nuvem (o tinytuya.json do `tinytuya wizard`: apiKey, apiSecret e apiRegion), enviadas por ADB
+     * para tuya-cloud.json na pasta do app: copiadas para a área privada e apagadas de lá, como a lista de aparelhos.
+     */
+    private void loadCloud() {
+        File priv = new File(app.getFilesDir(), "tuya-cloud.json"), ext = importFile(app, "tuya-cloud.json");
+        if (ext != null && ext.isFile()) {
+            try {
+                byte[] data = readAll(ext);
+                new JSONObject(new String(data, StandardCharsets.UTF_8));
+                File tmp = new File(app.getFilesDir(), "tuya-cloud.tmp");
+                try (OutputStream out = new FileOutputStream(tmp)) {
+                    out.write(data);
+                }
+                if (tmp.renameTo(priv)) {
+                    //noinspection ResultOfMethodCallIgnored
+                    ext.delete();
+                    AppLog.w("tuya: cloud credentials imported");
+                }
+            } catch (Exception e) {
+                AppLog.w("tuya: could not import the cloud credentials");
+            }
+        }
+        cloud = null;
+        try {
+            JSONObject o = new JSONObject(new String(readAll(priv), StandardCharsets.UTF_8));
+            if (!o.optString("apiKey").isEmpty() && !o.optString("apiSecret").isEmpty()) {
+                cloud = new TuyaCloud(o.optString("apiKey"), o.optString("apiSecret"), o.optString("apiRegion"));
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private static byte[] readAll(File f) throws IOException {
@@ -291,34 +336,52 @@ final class Tuya {
     /** Marca como sem aviso quem ainda não se anunciou (depois de alguns segundos de escuta). */
     void settle() {
         for (Device d : devices()) {
-            if (d.state == UNKNOWN && d.switchable() && d.ip.isEmpty()) d.state = OFFLINE;
+            if (d.state != UNKNOWN || !d.switchable() || !d.ip.isEmpty()) continue;
+            if (cloud != null) refresh(d); else d.state = OFFLINE;   // sem aviso na rede: a nuvem sabe, se houver
         }
         changed();
     }
 
-    /** Pergunta de novo o estado de quem já se anunciou (a lista aberta faz isso de tempos em tempos). */
+    /** Pergunta de novo o estado de quem já se anunciou, ou que a nuvem alcança (a lista aberta faz isso de tempos em tempos). */
     void refreshAll() {
-        for (Device d : devices()) if (d.switchable() && !d.ip.isEmpty() && d.state != WORKING) refresh(d);
+        for (Device d : devices()) {
+            if (d.switchable() && d.state != WORKING && (!d.ip.isEmpty() || cloud != null)) refresh(d);
+        }
     }
 
     void refresh(Device d) {
         if (!d.switchable()) return;
-        if (d.ip.isEmpty()) {
-            d.state = OFFLINE;
+        long now = System.currentTimeMillis();
+        boolean local = !d.ip.isEmpty() && VERSIONS.contains(d.version);
+        boolean tryLocal = local && now - d.localFailedAt > LOCAL_RETRY_MS;
+        if (!tryLocal && cloud == null) {
+            d.state = d.ip.isEmpty() ? OFFLINE : !VERSIONS.contains(d.version) ? NEEDS_NEWER : NO_ANSWER;
             changed();
             return;
         }
-        if (!VERSIONS.contains(d.version)) {
-            d.state = NEEDS_NEWER;
-            changed();
-            return;
-        }
+        // O que só a nuvem alcança se lê devagar: cada leitura vale na cota da conta.
+        if (!tryLocal && d.viaCloud && d.state == READY && now - d.cloudAt < CLOUD_MS) return;
         pool.execute(() -> {
-            try {
-                readState(d);
-            } catch (Exception e) {
+            if (tryLocal) {
+                try {
+                    readState(d);
+                    d.viaCloud = false;
+                    changed();
+                    return;
+                } catch (Exception e) {
+                    d.localFailedAt = System.currentTimeMillis();
+                    AppLog.w("tuya: no answer on the network (" + d.category + ", v" + d.version + "): " + e.getClass().getSimpleName());
+                }
+            }
+            if (cloud != null) {
+                try {
+                    readCloud(d);
+                } catch (Exception e) {
+                    d.state = NO_ANSWER;
+                    AppLog.w("tuya: no answer from the cloud (" + d.category + "): " + e.getClass().getSimpleName());
+                }
+            } else {
                 d.state = NO_ANSWER;
-                AppLog.w("tuya: no answer (" + d.category + ", v" + d.version + "): " + e.getClass().getSimpleName());
             }
             changed();
         });
@@ -332,22 +395,85 @@ final class Tuya {
         for (int i = 0; entry.dp != null && i < d.dps.length && i < d.on.length; i++) if (d.dps[i].equals(entry.dp)) at = i;
         if (d.state != READY || at < 0) return;
         String dp = d.dps[at];
+        String code = at < d.codes.length && d.codes[at] != null ? d.codes[at] : codeOf(dp);
         boolean turnOn = !d.on[at];
         d.state = WORKING;
         changed();
         pool.execute(() -> {
-            try (Socket s = open(d)) {
-                TuyaConnection c = new TuyaConnection(s.getInputStream(), s.getOutputStream(), d.version, d.id, TuyaProtocol.key(d.key));
-                c.negotiate();
-                c.control("{\"" + dp + "\":" + turnOn + "}", System.currentTimeMillis() / 1000);
-                Thread.sleep(300);   // dá tempo de o aparelho gravar o novo estado
-                apply(d, c.query(System.currentTimeMillis() / 1000));
-            } catch (Exception e) {
-                AppLog.w("tuya: no answer to a switch (" + d.category + ", v" + d.version + "): " + e.getClass().getSimpleName());
-                d.state = NO_ANSWER;
+            boolean done = false;
+            if (!d.viaCloud) {
+                try (Socket s = open(d)) {
+                    TuyaConnection c = new TuyaConnection(s.getInputStream(), s.getOutputStream(), d.version, d.id, TuyaProtocol.key(d.key));
+                    c.negotiate();
+                    c.control("{\"" + dp + "\":" + turnOn + "}", System.currentTimeMillis() / 1000);
+                    Thread.sleep(300);   // dá tempo de o aparelho gravar o novo estado
+                    apply(d, c.query(System.currentTimeMillis() / 1000));
+                    done = true;
+                } catch (Exception e) {
+                    d.localFailedAt = System.currentTimeMillis();
+                    AppLog.w("tuya: no answer to a switch on the network (" + d.category + ", v" + d.version + "): " + e.getClass().getSimpleName());
+                }
             }
+            if (!done && cloud != null) {
+                try {
+                    cloud.command(d.id, code, turnOn);
+                    Thread.sleep(800);   // a nuvem leva um instante para refletir o comando
+                    readCloud(d);
+                    done = true;
+                } catch (Exception e) {
+                    AppLog.w("tuya: no answer to a switch from the cloud (" + d.category + "): " + e.getClass().getSimpleName());
+                }
+            }
+            if (!done) d.state = NO_ANSWER;
             changed();
         });
+    }
+
+    // MARK: - A nuvem
+
+    /** O ponto de dados de uma tecla da nuvem (switch_1 a switch_8; "switch" é a 1 e "switch_led" a 20), ou null. */
+    static String dpOf(String code) {
+        if (code.equals("switch")) return "1";
+        if (code.equals("switch_led")) return "20";
+        if (code.length() == 8 && code.startsWith("switch_") && code.charAt(7) >= '1' && code.charAt(7) <= '8') return code.substring(7);
+        return null;
+    }
+
+    /** O código da nuvem de um ponto de dados, quando ainda não se leu o do aparelho. */
+    static String codeOf(String dp) {
+        return dp.equals("20") ? "switch_led" : "switch_" + dp;
+    }
+
+    private void readCloud(Device d) throws Exception {
+        JSONArray list = cloud.status(d.id);
+        java.util.Map<String, String> codeOfDp = new java.util.HashMap<>();
+        java.util.Map<String, Boolean> valueOfDp = new java.util.HashMap<>();
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject o = list.optJSONObject(i);
+            String dp = o == null ? null : dpOf(o.optString("code"));
+            if (dp != null && o.opt("value") instanceof Boolean) {
+                codeOfDp.put(dp, o.optString("code"));
+                valueOfDp.put(dp, o.getBoolean("value"));
+            }
+        }
+        List<String> keys = new ArrayList<>();
+        for (String dp : SWITCH_DPS) if (valueOfDp.containsKey(dp)) keys.add(dp);
+        if (keys.isEmpty()) {
+            d.state = NOT_SWITCH;
+            return;
+        }
+        boolean[] on = new boolean[keys.size()];
+        String[] codes = new String[keys.size()];
+        for (int n = 0; n < on.length; n++) {
+            on[n] = valueOfDp.get(keys.get(n));
+            codes[n] = codeOfDp.get(keys.get(n));
+        }
+        d.dps = keys.toArray(new String[0]);
+        d.on = on;
+        d.codes = codes;
+        d.viaCloud = true;
+        d.cloudAt = System.currentTimeMillis();
+        d.state = READY;
     }
 
     private Socket open(Device d) throws IOException {
