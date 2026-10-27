@@ -55,6 +55,8 @@ final class HomeApps {
     private HomeApps() {}
 
     static final int APP = 0, LIVE_TV = 1, INPUT = 2, ALL_APPS = 3, SETTINGS = 4, ANDROID_SETTINGS = 5;
+    /** The Smart Home list (Tuya devices), a top button once devices have been set up. */
+    static final int SMART = 9;
     /** A system settings screen (Wi-Fi, Bluetooth): the first of its PANELS this TV has. */
     static final int PANEL = 8;
     /** The "HDMI Inputs" button: opens the bottom drawer on the inputs (the home screen handles it). */
@@ -207,10 +209,10 @@ final class HomeApps {
     // MARK: - Top buttons (the round ones at the top right)
 
     static final String TOP_LIVE = "live", TOP_INPUTS = "inputs", TOP_WIFI = "wifi", TOP_BLUETOOTH = "bluetooth",
-            TOP_PROJECTION = "projection", TOP_SETTINGS = "settings";
+            TOP_PROJECTION = "projection", TOP_SETTINGS = "settings", TOP_SMART = "smart";
     /** Every button there can be, in their order (Settings > Top Buttons picks among them). */
     static final List<String> TOP_ALL = Collections.unmodifiableList(java.util.Arrays.asList(TOP_LIVE, TOP_INPUTS,
-            TOP_WIFI, TOP_BLUETOOTH, TOP_PROJECTION, TOP_SETTINGS));
+            TOP_WIFI, TOP_BLUETOOTH, TOP_PROJECTION, TOP_SMART, TOP_SETTINGS));
     static final List<String> TOP_DEFAULT = Collections.unmodifiableList(java.util.Arrays.asList(TOP_INPUTS, TOP_WIFI,
             TOP_BLUETOOTH, TOP_PROJECTION, TOP_SETTINGS));
     static final int MAX_TOP = TOP_ALL.size();
@@ -238,6 +240,7 @@ final class HomeApps {
             case TOP_INPUTS: return action(INPUTS, TOP_INPUTS, "HDMI", "hdmi");
             case TOP_WIFI: return action(PANEL, TOP_WIFI, "Wi-Fi", "wifi");
             case TOP_BLUETOOTH: return action(PANEL, TOP_BLUETOOTH, "Bluetooth", "bluetooth");
+            case TOP_SMART: return action(SMART, TOP_SMART, Ui.tr("Smart Home"), "home");
             case TOP_PROJECTION: {
                 Item it = action(APP, TOP_PROJECTION, Ui.tr("Projection"), "projection");
                 it.pkg = projectionPackage(Prefs.app());
@@ -260,6 +263,7 @@ final class HomeApps {
         switch (key) {
             case TOP_WIFI: case TOP_BLUETOOTH: return panelIntent(c.getPackageManager(), key) != null;
             case TOP_PROJECTION: return projectionPackage(c) != null;
+            case TOP_SMART: return Tuya.configured(c);
             default: return true;
         }
     }
@@ -495,6 +499,9 @@ final class HomeApps {
                 break;
             case SETTINGS:
                 intent = new Intent().setComponent(new ComponentName(a, SettingsActivity.class));
+                break;
+            case SMART:
+                intent = new Intent().setComponent(new ComponentName(a, TuyaActivity.class));
                 break;
             case ANDROID_SETTINGS:
                 intent = new Intent(Settings.ACTION_SETTINGS);

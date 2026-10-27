@@ -296,6 +296,19 @@ desligado e root de fábrica (`SuperUser`). O que se aprendeu:
   chama `process` ao ligar e ao voltar ao Original). O texto vem do celular e é só dado: limpo por `Reminders.clean`
   (sem controle, 100 caracteres), desenhado em `TextView`, nunca vai para um comando; a lista sai em JSON com `<`, `>` e
   `&` escapados. Para criar ou apagar é preciso o Controle pelo celular ligado; os criados disparam sem ele.
+- **Casa inteligente (Tuya / Smart Life)** (botão do topo, em Configurações → Botões do Topo; só aparece com o arquivo de
+  aparelhos): `Tuya` lista, liga e desliga pela rede local, sem nuvem; `TuyaActivity` é a lista (OK alterna).
+  Os nomes, IDs e chaves locais vêm do `devices.json` do `python -m tinytuya wizard` (conta de desenvolvedor grátis em
+  platform.tuya.com), enviado por `adb push` para `Android/data/io.freemytv/files/tuya-devices.json`: o app o copia para
+  a área privada e apaga o original. As chaves são secretas: nunca no chat, no log nem no git (o `.gitignore` cobre os
+  nomes). O IP não é guardado: cada aparelho avisa o seu em broadcast UDP (6667 e 7000; AES-ECB, e AES-GCM na 3.5, com a
+  chave pública de descoberta da Tuya), e o `gwId` liga o aviso ao aparelho. `TuyaProtocol` é o protocolo, sem Android,
+  conferido byte a byte contra o `tinytuya` (quadros 3.3 de saída e a leitura do broadcast). Só liga e desliga o que a
+  categoria da Tuya diz ser tomada, interruptor, fita, módulo, lâmpada, ventilador ou régua (`SWITCHES`); o ponto de
+  dados é o primeiro booleano entre `1` e `20`. O resto (hubs infravermelho, sensores, controles virtuais) aparece como
+  "Not a switch". Hoje só a versão 3.3: a 3.4 e a 3.5 (aperto de mão com chave de sessão) aparecem como "Not supported
+  yet". Alguns aparelhos nem aceitam a conexão TCP na 6668 (timeout) enquanto outro cliente ocupa o único espaço dela:
+  aparecem como "No response" e a lista tenta de novo a cada 10 s.
 - Texto na tela: `Ui.tr("English")`, traduzido a partir de `app/assets/i18n/<idioma>.json` (com o inglês como chave;
   uma busca num HashMap, inglês quando um idioma não tem a frase). Texto montado em tempo de execução é um modelo:
   `Ui.trf("{n} min ago", "n", 12)`, nunca palavras concatenadas. Uma chave `"contexto|Texto"` é o mesmo inglês onde um

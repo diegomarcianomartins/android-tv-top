@@ -3,6 +3,13 @@ config.properties
 *.keystore
 *.idsig
 
+# Tuya: the wizard's files hold device keys and the API secret
+devices.json
+tuya-devices.json
+tuya-raw.json
+tinytuya.json
+snapshot.json
+
 # Build output
 out/
 *.apk
