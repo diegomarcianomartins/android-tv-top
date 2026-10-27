@@ -312,7 +312,8 @@ desligado e root de fábrica (`SuperUser`). O que se aprendeu:
   categoria da Tuya diz ser tomada, interruptor, fita, módulo, lâmpada, ventilador ou régua (`SWITCHES`). Os pontos de
   dados que ligam e desligam são os booleanos entre `1` e `8` e o `20`: um interruptor de 4 teclas tem o 1, 2, 3 e 4
   (o 7 a 10 são temporizadores e o 16 é a luz de fundo), e vira um cartão por tecla ("geral sala · 3"; `Tuya.Entry`).
-  O arquivo de aparelhos aceita `"channels": {"1": "Luz", "2": "Arandelas"}` em cada um para dar nome às teclas. O resto (hubs infravermelho, sensores, controles virtuais) aparece como
+  O arquivo de aparelhos aceita `"channels": {"1": "Luz", "2": "Arandelas"}` em cada um para dar nome às teclas, e
+  `"hidden": ["1"]` para esconder uma (o app a lê, mas não mostra o cartão). O resto (hubs infravermelho, sensores, controles virtuais) aparece como
   "Not a switch". Fala as versões 3.3, 3.4 e 3.5 (`TuyaConnection`; a 3.4 e a 3.5 começam com um aperto de mão de três mensagens que dá a
   chave de sessão: AES-ECB com HMAC-SHA256 na 3.4, AES-GCM nos quadros 0x6699 na 3.5, com o comando 13 para mudar e o 16 para
   perguntar). Conferida contra o `tinytuya` (o quadro de comando da 3.4 é idêntico byte a byte; o da 3.5 ele decifra) e

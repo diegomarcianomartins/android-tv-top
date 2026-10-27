@@ -55,6 +55,8 @@ final class Tuya {
         final String id, name, key, category;
         /** Os nomes das teclas, se o arquivo os der ("channels": {"1": "Luz", ...}); senão, o número. */
         final JSONObject channelNames;
+        /** As teclas que a pessoa não quer ver ("hidden": ["1"] no arquivo): o app as lê, mas não mostra o cartão. */
+        final Set<String> hidden = new HashSet<>();
         volatile String ip = "", version = "";
         /** O estado veio da nuvem (não da rede local), e quando; os códigos da nuvem das teclas, na ordem de dps. */
         volatile boolean viaCloud;
@@ -65,12 +67,13 @@ final class Tuya {
         volatile String[] dps = new String[0];
         volatile boolean[] on = new boolean[0];
 
-        Device(String id, String name, String key, String category, JSONObject channelNames) {
+        Device(String id, String name, String key, String category, JSONObject channelNames, JSONArray hiddenKeys) {
             this.id = id;
             this.name = name;
             this.key = key;
             this.category = category;
             this.channelNames = channelNames == null ? new JSONObject() : channelNames;
+            for (int i = 0; hiddenKeys != null && i < hiddenKeys.length(); i++) hidden.add(hiddenKeys.optString(i));
         }
 
         boolean switchable() {
@@ -129,13 +132,21 @@ final class Tuya {
         return keys;
     }
 
-    /** As entradas da lista, na ordem dos aparelhos. */
+    /** As entradas da lista, na ordem dos aparelhos (sem as teclas escondidas). */
     static List<Entry> entries(List<Device> devices) {
         List<Entry> out = new ArrayList<>();
         for (Device d : devices) {
-            List<String> keys = channels(d);
-            if (keys.size() < 2) out.add(new Entry(d, null));
-            else for (String dp : keys) out.add(new Entry(d, dp));
+            List<String> all = channels(d), shown = new ArrayList<>();
+            for (String dp : all) if (!d.hidden.contains(dp)) shown.add(dp);
+            if (all.isEmpty()) {
+                out.add(new Entry(d, null));   // ainda não se sabe as teclas
+            } else if (shown.isEmpty()) {
+                continue;                       // todas escondidas: o aparelho não aparece
+            } else if (all.size() == 1) {
+                out.add(new Entry(d, null));    // uma tecla só: o cartão é o do aparelho
+            } else {
+                for (String dp : shown) out.add(new Entry(d, dp));
+            }
         }
         return out;
     }
@@ -222,7 +233,7 @@ final class Tuya {
                 JSONObject o = all.optJSONObject(i);
                 if (o == null || o.optString("id").isEmpty() || o.optString("key").isEmpty()) continue;
                 found.add(new Device(o.optString("id"), o.optString("name", o.optString("id")), o.optString("key"),
-                        o.optString("category"), o.optJSONObject("channels")));
+                        o.optString("category"), o.optJSONObject("channels"), o.optJSONArray("hidden")));
             }
         } catch (Exception ignored) {
         }
