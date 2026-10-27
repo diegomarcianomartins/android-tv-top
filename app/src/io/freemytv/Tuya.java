@@ -57,6 +57,8 @@ final class Tuya {
         final JSONObject channelNames;
         /** As teclas que a pessoa não quer ver ("hidden": ["1"] no arquivo): o app as lê, mas não mostra o cartão. */
         final Set<String> hidden = new HashSet<>();
+        /** O ícone de cada tecla, se a pessoa o escolheu ("icons": {"3": "plug"}): plug, bulb, strip, switch, fan, remote, sensor. */
+        final JSONObject icons;
         volatile String ip = "", version = "";
         /** O estado veio da nuvem (não da rede local), e quando; os códigos da nuvem das teclas, na ordem de dps. */
         volatile boolean viaCloud;
@@ -67,12 +69,13 @@ final class Tuya {
         volatile String[] dps = new String[0];
         volatile boolean[] on = new boolean[0];
 
-        Device(String id, String name, String key, String category, JSONObject channelNames, JSONArray hiddenKeys) {
+        Device(String id, String name, String key, String category, JSONObject channelNames, JSONArray hiddenKeys, JSONObject icons) {
             this.id = id;
             this.name = name;
             this.key = key;
             this.category = category;
             this.channelNames = channelNames == null ? new JSONObject() : channelNames;
+            this.icons = icons == null ? new JSONObject() : icons;
             for (int i = 0; hiddenKeys != null && i < hiddenKeys.length(); i++) hidden.add(hiddenKeys.optString(i));
         }
 
@@ -98,6 +101,16 @@ final class Tuya {
             if (dp == null) return device.name;
             String custom = device.channelNames.optString(dp, "");
             return custom.isEmpty() ? device.name + " · " + dp : custom;   // o nome da tecla, se o arquivo o der
+        }
+
+        /**
+         * O ícone da tecla, se não for o da categoria do aparelho: o que o arquivo escolheu ou, numa tecla cujo nome
+         * começa com "Tomada", o da tomada. "" quando vale o da categoria.
+         */
+        String icon() {
+            String custom = dp == null ? "" : device.icons.optString(dp, "");
+            if (!custom.isEmpty()) return custom;
+            return label().toLowerCase(java.util.Locale.ROOT).startsWith("tomada") ? "plug" : "";
         }
 
         /** ON ou OFF numa tecla conhecida; senão o estado do aparelho (sem resposta, offline...). */
@@ -233,7 +246,7 @@ final class Tuya {
                 JSONObject o = all.optJSONObject(i);
                 if (o == null || o.optString("id").isEmpty() || o.optString("key").isEmpty()) continue;
                 found.add(new Device(o.optString("id"), o.optString("name", o.optString("id")), o.optString("key"),
-                        o.optString("category"), o.optJSONObject("channels"), o.optJSONArray("hidden")));
+                        o.optString("category"), o.optJSONObject("channels"), o.optJSONArray("hidden"), o.optJSONObject("icons")));
             }
         } catch (Exception ignored) {
         }

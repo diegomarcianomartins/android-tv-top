@@ -212,6 +212,20 @@ public class TuyaActivity extends Activity {
             }
         }
 
+        /** O ícone de um cartão: o da tecla (uma "Tomada" num interruptor, por exemplo) ou o da categoria do aparelho. */
+        private static int kind(Tuya.Entry e) {
+            switch (e.icon()) {
+                case "plug": return PLUG;
+                case "bulb": return BULB;
+                case "strip": return STRIP;
+                case "switch": return SWITCH;
+                case "fan": return FAN;
+                case "remote": return REMOTE;
+                case "sensor": return SENSOR;
+                default: return kind(e.device.category);
+            }
+        }
+
         private static int kind(String category) {
             switch (category) {
                 case "dj": case "dc": return BULB;
@@ -276,7 +290,7 @@ public class TuyaActivity extends Activity {
             float bx = card.left + 24 * k + 34 * k, by = card.centerY();
             badge.setColor(on ? 0x2BFFC107 : live ? 0x1FFFFFFF : 0x12FFFFFF);
             c.drawCircle(bx, by, 40 * k, badge);
-            drawIcon(c, kind(e.device.category), bx, by, 58 * k, tint, on);
+            drawIcon(c, kind(e), bx, by, 58 * k, tint, on);
 
             float textX = bx + 40 * k + 20 * k, room = card.right - 20 * k - textX;
             name.setColor(live ? 0xF2FFFFFF : 0x99FFFFFF);
