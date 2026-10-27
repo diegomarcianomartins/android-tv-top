@@ -63,7 +63,7 @@ public class TuyaActivity extends Activity {
         private final Scene scene = new Scene();
         private final Handler handler = new Handler(Looper.getMainLooper());
         private final RectF card = new RectF(), part = new RectF();
-        private List<Tuya.Device> list = new ArrayList<>();
+        private List<Tuya.Entry> list = new ArrayList<>();
         // A posição de cada cartão (x, y em unidades, dentro da área que rola) e a de cada título de seção.
         private float[] cardX = new float[0], cardY = new float[0];
         private float firstTitleY = -1, otherTitleY = -1;
@@ -94,7 +94,7 @@ public class TuyaActivity extends Activity {
             scene.applyPalette();
             setFocusable(true);
             setContentDescription(Ui.tr("Smart Home"));
-            tuya.setListener(() -> postInvalidate());
+            tuya.setListener(() -> handler.post(this::rebuild));
         }
 
         void resume() {
@@ -103,7 +103,7 @@ public class TuyaActivity extends Activity {
             startedAt = SystemClock.uptimeMillis();
             new Thread(() -> {
                 tuya.load();
-                List<Tuya.Device> sorted = Tuya.sorted(tuya.devices());
+                List<Tuya.Entry> sorted = Tuya.entries(Tuya.sorted(tuya.devices()));
                 handler.post(() -> {
                     list = sorted;
                     loaded = true;
@@ -130,7 +130,7 @@ public class TuyaActivity extends Activity {
             cardX = new float[n];
             cardY = new float[n];
             switchCount = 0;
-            for (Tuya.Device d : list) if (d.switchable()) switchCount++;
+            for (Tuya.Entry e : list) if (e.device.switchable()) switchCount++;
             float y = 0;
             firstTitleY = otherTitleY = -1;
             for (int group = 0; group < 2; group++) {
@@ -146,7 +146,33 @@ public class TuyaActivity extends Activity {
                 y += ((to - from + COLS - 1) / COLS) * (CARD_H + GAP_Y) + SECTION_GAP;
             }
             focus = Math.min(focus, Math.max(0, n - 1));
-            scrollY = 0;
+        }
+
+        /**
+         * Refaz a lista quando um aparelho revela quantas teclas tem (um interruptor de 4 teclas vira 4 cartões), sem
+         * perder o cartão em foco; senão só redesenha.
+         */
+        private void rebuild() {
+            if (!loaded) return;
+            List<Tuya.Entry> next = Tuya.entries(Tuya.sorted(tuya.devices()));
+            boolean same = next.size() == list.size();
+            for (int i = 0; same && i < next.size(); i++) same = next.get(i).same(list.get(i));
+            if (!same) {
+                Tuya.Entry current = focus < list.size() ? list.get(focus) : null;
+                int at = 0;
+                for (int i = 0; current != null && i < next.size(); i++) {
+                    if (next.get(i).same(current)) {
+                        at = i;
+                        break;
+                    }
+                    if (next.get(i).device == current.device && at == 0) at = i;
+                }
+                list = next;
+                focus = at;
+                layout();
+                scrollY = Math.min(scrollY, Math.max(0, cardY.length == 0 ? 0 : cardY[cardY.length - 1] + CARD_H - (VIEW_BOTTOM - VIEW_TOP)));
+            }
+            invalidate();
         }
 
         @Override protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
@@ -174,8 +200,8 @@ public class TuyaActivity extends Activity {
             icon.setStrokeJoin(Paint.Join.ROUND);
         }
 
-        private static String status(Tuya.Device d) {
-            switch (d.state) {
+        private static String status(Tuya.Entry e) {
+            switch (e.state()) {
                 case Tuya.ON: return Ui.tr("On");
                 case Tuya.OFF: return Ui.tr("Off");
                 case Tuya.OFFLINE: return Ui.tr("Offline");
@@ -212,7 +238,7 @@ public class TuyaActivity extends Activity {
             Symbols.draw(getContext(), c, "home", (LEFT + 34) * k, 100 * k, 46 * k, 0xEBFFFFFF);
             c.drawText(Ui.tr("Smart Home"), (LEFT + 84) * k, 116 * k, title);
             int on = 0;
-            for (Tuya.Device d : list) if (d.state == Tuya.ON) on++;
+            for (Tuya.Entry e : list) if (e.state() == Tuya.ON) on++;
             if (!list.isEmpty()) c.drawText(Ui.trf("{n} on", "n", on), (1920 - LEFT) * k, 112 * k, count);
             c.drawText(Ui.tr("OK switches the device on or off."), (LEFT + 4) * k, 168 * k, hint);
 
@@ -234,8 +260,9 @@ public class TuyaActivity extends Activity {
             c.restore();
         }
 
-        private void drawCard(Canvas c, Tuya.Device d, boolean focused) {
-            boolean on = d.state == Tuya.ON, live = on || d.state == Tuya.OFF || d.state == Tuya.WORKING;
+        private void drawCard(Canvas c, Tuya.Entry e, boolean focused) {
+            int st = e.state();
+            boolean on = st == Tuya.ON, live = on || st == Tuya.OFF || st == Tuya.WORKING;
             float r = 26 * k;
             fill.setColor(focused ? CARD_FOCUS : CARD);
             c.drawRoundRect(card, r, r, fill);
@@ -249,14 +276,14 @@ public class TuyaActivity extends Activity {
             float bx = card.left + 24 * k + 34 * k, by = card.centerY();
             badge.setColor(on ? 0x2BFFC107 : live ? 0x1FFFFFFF : 0x12FFFFFF);
             c.drawCircle(bx, by, 40 * k, badge);
-            drawIcon(c, kind(d.category), bx, by, 58 * k, tint, on);
+            drawIcon(c, kind(e.device.category), bx, by, 58 * k, tint, on);
 
             float textX = bx + 40 * k + 20 * k, room = card.right - 20 * k - textX;
             name.setColor(live ? 0xF2FFFFFF : 0x99FFFFFF);
-            String shown = TextUtils.ellipsize(d.name, nameClip, room, TextUtils.TruncateAt.END).toString();
+            String shown = TextUtils.ellipsize(e.label(), nameClip, room, TextUtils.TruncateAt.END).toString();
             c.drawText(shown, textX, card.centerY() - 6 * k, name);
-            state.setColor(on ? ON_ICON : d.state == Tuya.NO_ANSWER ? AMBER : live ? 0xB3FFFFFF : 0x73FFFFFF);
-            c.drawText(TextUtils.ellipsize(status(d), stateClip, room, TextUtils.TruncateAt.END).toString(),
+            state.setColor(on ? ON_ICON : st == Tuya.NO_ANSWER ? AMBER : live ? 0xB3FFFFFF : 0x73FFFFFF);
+            c.drawText(TextUtils.ellipsize(status(e), stateClip, room, TextUtils.TruncateAt.END).toString(),
                     textX, card.centerY() + 32 * k, state);
         }
 

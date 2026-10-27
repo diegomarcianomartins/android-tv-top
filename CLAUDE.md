@@ -309,10 +309,14 @@ desligado e root de fábrica (`SuperUser`). O que se aprendeu:
   nomes). O IP não é guardado: cada aparelho avisa o seu em broadcast UDP (6667 e 7000; AES-ECB, e AES-GCM na 3.5, com a
   chave pública de descoberta da Tuya), e o `gwId` liga o aviso ao aparelho. `TuyaProtocol` é o protocolo, sem Android,
   conferido byte a byte contra o `tinytuya` (quadros 3.3 de saída e a leitura do broadcast). Só liga e desliga o que a
-  categoria da Tuya diz ser tomada, interruptor, fita, módulo, lâmpada, ventilador ou régua (`SWITCHES`); o ponto de
-  dados é o primeiro booleano entre `1` e `20`. O resto (hubs infravermelho, sensores, controles virtuais) aparece como
-  "Not a switch". Hoje só a versão 3.3: a 3.4 e a 3.5 (aperto de mão com chave de sessão) aparecem como "Not supported
-  yet". Alguns aparelhos nem aceitam a conexão TCP na 6668 (timeout) enquanto outro cliente ocupa o único espaço dela:
+  categoria da Tuya diz ser tomada, interruptor, fita, módulo, lâmpada, ventilador ou régua (`SWITCHES`). Os pontos de
+  dados que ligam e desligam são os booleanos entre `1` e `8` e o `20`: um interruptor de 4 teclas tem o 1, 2, 3 e 4
+  (o 7 a 10 são temporizadores e o 16 é a luz de fundo), e vira um cartão por tecla ("geral sala · 3"; `Tuya.Entry`).
+  O arquivo de aparelhos aceita `"channels": {"1": "Luz", "2": "Arandelas"}` em cada um para dar nome às teclas. O resto (hubs infravermelho, sensores, controles virtuais) aparece como
+  "Not a switch". Fala as versões 3.3, 3.4 e 3.5 (`TuyaConnection`; a 3.4 e a 3.5 começam com um aperto de mão de três mensagens que dá a
+  chave de sessão: AES-ECB com HMAC-SHA256 na 3.4, AES-GCM nos quadros 0x6699 na 3.5, com o comando 13 para mudar e o 16 para
+  perguntar). Conferida contra o `tinytuya` (o quadro de comando da 3.4 é idêntico byte a byte; o da 3.5 ele decifra) e
+  contra aparelhos de verdade; versões fora dessas aparecem como "Not supported yet". Alguns aparelhos nem aceitam a conexão TCP na 6668 (timeout) enquanto outro cliente ocupa o único espaço dela:
   aparecem como "No response" e a lista tenta de novo a cada 10 s.
 - Texto na tela: `Ui.tr("English")`, traduzido a partir de `app/assets/i18n/<idioma>.json` (com o inglês como chave;
   uma busca num HashMap, inglês quando um idioma não tem a frase). Texto montado em tempo de execução é um modelo:

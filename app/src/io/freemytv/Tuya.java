@@ -31,33 +31,109 @@ import java.util.concurrent.Executors;
  * do app (Android/data/io.freemytv/files): ele é copiado para a área privada e o original apagado, para as chaves
  * não ficarem onde outros apps leem. O IP não é guardado: cada aparelho avisa o seu em broadcast (portas 6667 e 7000),
  * e o ID liga o aviso ao aparelho. Só liga e desliga o que é interruptor ou tomada (a categoria da Tuya); o resto
- * (hubs infravermelho, sensores, controles virtuais) aparece como "Not a switch". Hoje só o protocolo 3.3.
+ * (hubs infravermelho, sensores, controles virtuais) aparece como "Not a switch". Fala as versões 3.3, 3.4 e 3.5 do protocolo (TuyaConnection).
  * Nada é logado com chave ou ID.
  */
 final class Tuya {
-    static final int UNKNOWN = 0, ON = 1, OFF = 2, OFFLINE = 3, NOT_SWITCH = 4, NEEDS_NEWER = 5, WORKING = 6, NO_ANSWER = 7;
+    /** O estado de um aparelho (READY: já se sabe o de cada tecla) e, nas teclas, ON ou OFF. */
+    static final int UNKNOWN = 0, ON = 1, OFF = 2, OFFLINE = 3, NOT_SWITCH = 4, NEEDS_NEWER = 5, WORKING = 6, NO_ANSWER = 7,
+            READY = 8;
     private static final int PORT = 6668, TIMEOUT_MS = 3000;
     /** As categorias da Tuya que ligam e desligam: tomada, interruptor, fita de LED, módulo, lâmpada, ventilador, régua. */
     private static final Set<String> SWITCHES = new HashSet<>(Arrays.asList("cz", "kg", "dd", "tdq", "dj", "dc", "fs", "fsd", "pc"));
-    /** Os pontos de dados que ligam e desligam, na ordem em que se procura (o 1 é o padrão; o 20, as lâmpadas e fitas). */
-    private static final String[] SWITCH_DPS = {"1", "20"};
+    /**
+     * Os pontos de dados que ligam e desligam, na ordem: de 1 a 8 as teclas (um interruptor de 4 teclas tem o 1, 2, 3 e 4;
+     * o 7 a 10 dele são temporizadores, números, e o 16 é a luz de fundo) e o 20, as lâmpadas e fitas. Só os que são
+     * verdadeiro ou falso entram.
+     */
+    private static final String[] SWITCH_DPS = {"1", "2", "3", "4", "5", "6", "7", "8", "20"};
+    /** As versões do protocolo local que sabemos falar (a 3.4 e a 3.5 negociam uma chave de sessão). */
+    private static final Set<String> VERSIONS = new HashSet<>(Arrays.asList("3.3", "3.4", "3.5"));
     private static Tuya instance;
 
     static final class Device {
         final String id, name, key, category;
-        volatile String ip = "", version = "", dp = "";
+        /** Os nomes das teclas, se o arquivo os der ("channels": {"1": "Luz", ...}); senão, o número. */
+        final JSONObject channelNames;
+        volatile String ip = "", version = "";
         volatile int state = UNKNOWN;
+        /** Os pontos de dados que ligam e desligam, e se cada um está ligado (iguais em tamanho). */
+        volatile String[] dps = new String[0];
+        volatile boolean[] on = new boolean[0];
 
-        Device(String id, String name, String key, String category) {
+        Device(String id, String name, String key, String category, JSONObject channelNames) {
             this.id = id;
             this.name = name;
             this.key = key;
             this.category = category;
+            this.channelNames = channelNames == null ? new JSONObject() : channelNames;
         }
 
         boolean switchable() {
             return SWITCHES.contains(category);
         }
+    }
+
+    /**
+     * O que a lista mostra: o aparelho todo (um que tem uma tecla só, que não se sabe ainda ou que não liga e desliga),
+     * ou cada tecla de um aparelho que tem várias (um interruptor de 4 teclas vira 4 cartões e o cartão dele some).
+     */
+    static final class Entry {
+        final Device device;
+        final String dp;   // a tecla (o ponto de dados), ou null para o aparelho todo
+
+        Entry(Device device, String dp) {
+            this.device = device;
+            this.dp = dp;
+        }
+
+        String label() {
+            if (dp == null) return device.name;
+            String custom = device.channelNames.optString(dp, "");
+            return custom.isEmpty() ? device.name + " · " + dp : custom;   // o nome da tecla, se o arquivo o der
+        }
+
+        /** ON ou OFF numa tecla conhecida; senão o estado do aparelho (sem resposta, offline...). */
+        int state() {
+            Device d = device;
+            if (d.state == READY) {
+                if (dp == null && d.dps.length == 1 && d.on.length == 1) return d.on[0] ? ON : OFF;   // uma tecla só
+                for (int i = 0; dp != null && i < d.dps.length && i < d.on.length; i++) if (d.dps[i].equals(dp)) return d.on[i] ? ON : OFF;
+            }
+            return d.state == READY ? UNKNOWN : d.state;
+        }
+
+        boolean same(Entry other) {
+            return other != null && other.device == device && (dp == null ? other.dp == null : dp.equals(other.dp));
+        }
+    }
+
+    /**
+     * As teclas de um aparelho: as que ele mesmo informou ou, enquanto não responde, as que o arquivo nomeia (assim um
+     * interruptor de 4 teclas que ainda não respondeu já aparece como as suas teclas, e não como um cartão só).
+     */
+    private static List<String> channels(Device d) {
+        List<String> keys = new ArrayList<>();
+        int n = Math.min(d.dps.length, d.on.length);
+        if (n > 0) {
+            keys.addAll(Arrays.asList(d.dps).subList(0, n));
+        } else {
+            java.util.Iterator<String> it = d.channelNames.keys();
+            while (it.hasNext()) keys.add(it.next());
+            Collections.sort(keys, (a, b) -> a.length() != b.length() ? a.length() - b.length() : a.compareTo(b));
+        }
+        return keys;
+    }
+
+    /** As entradas da lista, na ordem dos aparelhos. */
+    static List<Entry> entries(List<Device> devices) {
+        List<Entry> out = new ArrayList<>();
+        for (Device d : devices) {
+            List<String> keys = channels(d);
+            if (keys.size() < 2) out.add(new Entry(d, null));
+            else for (String dp : keys) out.add(new Entry(d, dp));
+        }
+        return out;
     }
 
     interface Listener {
@@ -134,7 +210,8 @@ final class Tuya {
             for (int i = 0; i < all.length(); i++) {
                 JSONObject o = all.optJSONObject(i);
                 if (o == null || o.optString("id").isEmpty() || o.optString("key").isEmpty()) continue;
-                found.add(new Device(o.optString("id"), o.optString("name", o.optString("id")), o.optString("key"), o.optString("category")));
+                found.add(new Device(o.optString("id"), o.optString("name", o.optString("id")), o.optString("key"),
+                        o.optString("category"), o.optJSONObject("channels")));
             }
         } catch (Exception ignored) {
         }
@@ -199,7 +276,7 @@ final class Tuya {
             String id = o.optString("gwId"), ip = o.optString("ip"), version = o.optString("version");
             for (Device d : devices()) {
                 if (!d.id.equals(id) || ip.isEmpty()) continue;
-                boolean fresh = !ip.equals(d.ip) || d.state == UNKNOWN || d.state == OFFLINE;
+                boolean fresh = !ip.equals(d.ip) || d.state == UNKNOWN || d.state == OFFLINE || d.state == NO_ANSWER;
                 d.ip = ip;
                 d.version = version;
                 if (fresh && d.switchable() && d.state != WORKING) refresh(d);
@@ -231,7 +308,7 @@ final class Tuya {
             changed();
             return;
         }
-        if (!"3.3".equals(d.version)) {
+        if (!VERSIONS.contains(d.version)) {
             d.state = NEEDS_NEWER;
             changed();
             return;
@@ -247,34 +324,27 @@ final class Tuya {
         });
     }
 
-    /** Liga o desligado e desliga o ligado. */
-    void toggle(Device d) {
-        if ((d.state != ON && d.state != OFF) || d.dp.isEmpty()) return;
-        boolean turnOn = d.state == OFF;
+    /** Liga a tecla desligada e desliga a ligada. */
+    void toggle(Entry entry) {
+        Device d = entry.device;
+        int at = -1;
+        if (entry.dp == null) at = d.dps.length == 1 && d.on.length == 1 ? 0 : -1;   // o aparelho de uma tecla só
+        for (int i = 0; entry.dp != null && i < d.dps.length && i < d.on.length; i++) if (d.dps[i].equals(entry.dp)) at = i;
+        if (d.state != READY || at < 0) return;
+        String dp = d.dps[at];
+        boolean turnOn = !d.on[at];
         d.state = WORKING;
         changed();
         pool.execute(() -> {
             try (Socket s = open(d)) {
-                OutputStream out = s.getOutputStream();
-                InputStream in = s.getInputStream();
-                long now = System.currentTimeMillis() / 1000;
-                out.write(TuyaProtocol.control(d.id, TuyaProtocol.key(d.key), 1, now, "{\"" + d.dp + "\":" + turnOn + "}"));
-                out.flush();
-                for (int i = 0; i < 4; i++) {   // a confirmação (ou o estado) chega em até alguns quadros
-                    TuyaProtocol.Reply r = TuyaProtocol.read(in, TuyaProtocol.key(d.key));
-                    if (r.cmd == TuyaProtocol.CMD_CONTROL || r.cmd == TuyaProtocol.CMD_STATUS) break;
-                }
-            } catch (Exception e) {
-                AppLog.w("tuya: no answer to a switch");
-                d.state = NO_ANSWER;
-                changed();
-                return;
-            }
-            try {
+                TuyaConnection c = new TuyaConnection(s.getInputStream(), s.getOutputStream(), d.version, d.id, TuyaProtocol.key(d.key));
+                c.negotiate();
+                c.control("{\"" + dp + "\":" + turnOn + "}", System.currentTimeMillis() / 1000);
                 Thread.sleep(300);   // dá tempo de o aparelho gravar o novo estado
-                readState(d);
+                apply(d, c.query(System.currentTimeMillis() / 1000));
             } catch (Exception e) {
-                d.state = turnOn ? ON : OFF;
+                AppLog.w("tuya: no answer to a switch (" + d.category + ", v" + d.version + "): " + e.getClass().getSimpleName());
+                d.state = NO_ANSWER;
             }
             changed();
         });
@@ -287,31 +357,29 @@ final class Tuya {
         return s;
     }
 
-    /** Pergunta todos os pontos de dados e acha o que liga e desliga. */
+    /** Pergunta todos os pontos de dados e acha os que ligam e desligam. */
     private void readState(Device d) throws Exception {
         try (Socket s = open(d)) {
-            OutputStream out = s.getOutputStream();
-            InputStream in = s.getInputStream();
-            byte[] key = TuyaProtocol.key(d.key);
-            out.write(TuyaProtocol.query(d.id, key, 1, System.currentTimeMillis() / 1000));
-            out.flush();
-            for (int i = 0; i < 6; i++) {
-                TuyaProtocol.Reply r = TuyaProtocol.read(in, key);
-                if (r.json.isEmpty()) continue;
-                JSONObject dps = new JSONObject(r.json).optJSONObject("dps");
-                if (dps == null) continue;
-                for (String dp : SWITCH_DPS) {
-                    if (dps.opt(dp) instanceof Boolean) {
-                        d.dp = dp;
-                        d.state = dps.getBoolean(dp) ? ON : OFF;
-                        return;
-                    }
-                }
-                d.state = NOT_SWITCH;
-                return;
-            }
+            TuyaConnection c = new TuyaConnection(s.getInputStream(), s.getOutputStream(), d.version, d.id, TuyaProtocol.key(d.key));
+            c.negotiate();
+            apply(d, c.query(System.currentTimeMillis() / 1000));
         }
-        d.state = NO_ANSWER;
+    }
+
+    /** Guarda no aparelho o que o JSON de estado diz: as teclas que ligam e desligam e se cada uma está ligada. */
+    private static void apply(Device d, String json) throws org.json.JSONException {
+        JSONObject dps = new JSONObject(json).optJSONObject("dps");
+        List<String> keys = new ArrayList<>();
+        if (dps != null) for (String dp : SWITCH_DPS) if (dps.opt(dp) instanceof Boolean) keys.add(dp);
+        if (keys.isEmpty()) {
+            d.state = NOT_SWITCH;
+            return;
+        }
+        boolean[] on = new boolean[keys.size()];
+        for (int n = 0; n < on.length; n++) on[n] = dps.getBoolean(keys.get(n));
+        d.dps = keys.toArray(new String[0]);
+        d.on = on;
+        d.state = READY;
     }
 
     /** A lista em ordem: os que ligam e desligam primeiro, depois o resto, cada grupo por nome. */
