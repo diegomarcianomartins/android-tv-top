@@ -246,6 +246,11 @@ desligado e root de fábrica (`SuperUser`). O que se aprendeu:
 - A tela inicial é desenhada à mão num único Canvas (`HomeView`); o vidro e o céu são shaders AGSL (`Shaders`, Android
   13+, com alternativa para 8 a 12). Mantenha em 60 fps: nada de criar objetos no `onDraw`, nada de trabalho na thread
   da interface.
+- Os botões redondos do topo (HDMI, Wi-Fi, Bluetooth, Casa inteligente, Configurações; Configurações → Botões do Topo)
+  formam uma coluna na borda direita (`layoutLight`, `L_GUTTER`): o conteúdo, as cotações e as câmeras recuam
+  `contentRight()` para a esquerda dela, o nome do botão em foco aparece à esquerda dele, e a camada `status` tem o
+  tamanho da coluna (maior que isso ela corta os botões de baixo). Da prateleira, dos cartões e das câmeras, "direita"
+  no último item entra na coluna; nela, ↑↓ andam e "esquerda" volta ao conteúdo.
 - Algumas TVs desenham a interface em 1280×720 num painel 1080p (os modelos TCL de 1 GB:
   `ro.surface_flinger.max_graphics_width` e `_height`, `ro.config.low_ram`). Ali cada pixel e cada MB contam: o
   `Backdrop` monta suas imagens no tamanho da interface (e as sugestões usam o w1280 do TMDB), e os logos da barra têm

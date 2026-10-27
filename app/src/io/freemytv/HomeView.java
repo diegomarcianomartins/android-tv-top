@@ -95,7 +95,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // Light design (the L_ constants): title, tab bar, three recommendation cards and the shelf.
     // The tab bar is a 68 px capsule; the cards sit on the 5-column grid (the wide one spans 3).
     private static final float L_TITLE_BASE = 130, L_TABBAR_TOP = 158, L_TABBAR_H = 68, L_CARDS_TOP = 262, L_CARD_H = 442;
-    private static final float L_TALL_W = 320, L_CARD_GAP = 40, L_BUTTON = 68, L_BUTTON_GAP = 20, L_BUTTON_CY = 103;
+    private static final float L_TALL_W = 320, L_CARD_GAP = 40, L_BUTTON = 68, L_BUTTON_GAP = 20, L_BUTTON_CY = 103,
+            L_GUTTER = 100;   // os botões redondos formam uma coluna na borda direita; o resto fica à esquerda dela
     private static final float L_PLATTER_TOP = 814, L_TILE_H = 126;
     private static final float L_DATE_BASE = 330, L_CLOCK_BASE = 540, L_WEATHER_BASE = 626, L_QUOTES_BASE = 694;
     private static final int L_INK = 0xFF1D1D1F, L_DIM = 0xFF6E6E73, L_FAINT = 0xFF8E8E93;
@@ -551,7 +552,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float kk = width / 1920f;
         measure(sky, width, height);
         measure(heroLayer, width, Math.round(790 * kk));
-        measure(status, Math.round(1160 * kk), Math.round(240 * kk));
+        measure(status, Math.round(640 * kk), Math.round(700 * kk));   // a coluna de botões redondos e os nomes ao lado dela
         // Sized to what they draw (the glass and its shadow; the grown tiles and their shadows): smaller layers are
         // cheaper for the GPU to composite on every frame of the drawer animation.
         measure(platter, width, Math.round(320 * kk));
@@ -559,7 +560,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         measure(drawerLayer, width, Math.round(600 * kk));
         measure(sheetLayer, width, height);
         measure(toastLayer, Math.round(1000 * kk), Math.round(220 * kk));
-        measure(cameras, Math.round(1116 * kk), Math.round((cameras.hasChoice() ? 728 : 652) * kk));
+        // O bloco das câmeras encolhe um pouco (e fica com o canto esquerdo onde estava) para a grade não invadir a
+        // coluna de botões redondos da borda direita.
+        float cs = lightButtons.isEmpty() ? 1 : (1116 - L_GUTTER) / 1116f;
+        measure(cameras, Math.round(1116 * cs * kk), Math.round((cameras.hasChoice() ? 728 : 652) * cs * kk));
         setMeasuredDimension(width, height);
     }
 
@@ -580,7 +584,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         sheetLayer.setPivotX(width / 2f);
         sheetLayer.setPivotY(height / 2f);
         place(toastLayer, (width - toastLayer.getMeasuredWidth()) / 2, 0);
-        place(cameras, Math.round((CONTENT_R + 18) * kk) - cameras.getMeasuredWidth(), Math.round((cameras.hasChoice() ? 74 : 150) * kk));
+        place(cameras, Math.round((CONTENT_R + 18 - 1116) * kk), Math.round((cameras.hasChoice() ? 74 : 150) * kk));
     }
 
     private static void place(View v, int x, int y) {
@@ -1254,8 +1258,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     /** Coin logo + price in the configured currency, in a row at the right end of the tab bar. */
     private void drawQuotes(Canvas c) {
         boolean clock = !picksOn();
-        // At the right margin, under the round buttons: the shelf's glass is narrower and centred with few apps.
-        float right = CONTENT_R * k;
+        // At the right margin, beside the column of round buttons: the shelf's glass is narrower and centred with few apps.
+        float right = contentRight();
         applyTone();
         Paint text = clock ? lClockQuote : lQuote;
         // The corner buttons' names appear in this row: the quotes fade out while one of them has focus.
@@ -2790,13 +2794,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             topRects[i].set(x, tabTop, x + tw + 2 * pad, tabBottom);
             x = topRects[i].right + 4 * k;
         }
-        float b = L_BUTTON * k, right = CONTENT_R * k, cy = L_BUTTON_CY * k;
-        for (int i = lightButtons.size() - 1; i >= 0; i--) {
-            topRects[3 + i].set(right - b, cy - b / 2, right, cy + b / 2);
-            right -= b + L_BUTTON_GAP * k;
+        // Os botões redondos, em coluna na borda direita (de cima para baixo, na ordem da lista).
+        float b = L_BUTTON * k, bx = CONTENT_R * k - b, by = (L_BUTTON_CY - L_BUTTON / 2f) * k;
+        for (int i = 0; i < lightButtons.size(); i++) {
+            topRects[3 + i].set(bx, by, bx + b, by + b);
+            by += b + L_BUTTON_GAP * k;
         }
         float top = L_CARDS_TOP * k, ch = L_CARD_H * k, g = L_CARD_GAP * k, left = MARGIN * k, tall = L_TALL_W * k;
-        float wide = (CONTENT_R - MARGIN) * k - 2 * tall - 2 * g;
+        float wide = contentRight() - left - 2 * tall - 2 * g;
         cardRects[0].set(left, top, left + wide, top + ch);
         cardRects[1].set(cardRects[0].right + g, top, cardRects[0].right + g + tall, top + ch);
         cardRects[2].set(cardRects[1].right + g, top, cardRects[1].right + g + tall, top + ch);
@@ -3179,29 +3184,50 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             Symbols.draw(getContext(), c, it.symbol, cell.centerX(), cell.centerY(), 27 * k * s,
                     blend(tone(L_INK, 0xEBFFFFFF), L_INK, f));
             if (f > 0.01f) {
+                // O nome fica à esquerda do botão (que é da coluna da borda direita), alinhado à direita.
                 String label = it.label;
-                float half = lTip.measureText(label) / 2;
-                float x = Math.min(r.centerX(), CONTENT_R * k - half);
-                float base = r.bottom + (40 + 4 * f) * k;
+                float width = lTip.measureText(label);
+                float x = r.left - (24 + 6 * f) * k;
+                float base = r.centerY() + Ui.halfCap(lTip);
                 boolean own = bgTo != null && bgTo.photo != null;
                 if (own) {
                     // On their own photo: the name on a small smoked glass card, like the left column's.
                     float pad = 18 * k, cap = Ui.halfCap(lTip);
-                    float cx = Math.min(x, CONTENT_R * k - half - pad);
-                    x = cx;
-                    tmp.set(cx - half - pad, base - cap - 14 * k - cap, cx + half + pad, base - cap + 14 * k + cap);
+                    tmp.set(x - width - pad, base - cap - 14 * k - cap, x + pad, base - cap + 14 * k + cap);
                     scene.glass(c, tmp, tmp.height() / 2, SMOKE, tone(0.22f, 0.26f), 0, 0, 0.005f, 1, 0.8f * f);
                 }
                 lTip.setColor(own ? 0xFFFFFFFF : tone(L_INK, WHITE));
                 lTip.setAlpha(Math.round(255 * f));
+                lTip.setTextAlign(Paint.Align.RIGHT);
                 c.drawText(label, x, base, lTip);
+                lTip.setTextAlign(Paint.Align.CENTER);
             }
         }
+    }
+
+    /** A borda direita do conteúdo, em pixels: a coluna de botões redondos fica depois dela. */
+    private float contentRight() {
+        return (CONTENT_R - (lightButtons.isEmpty() ? 0 : L_GUTTER)) * k;
+    }
+
+    /** O botão redondo mais perto da altura y. */
+    private int nearestButton(float y) {
+        int best = 3;
+        for (int i = 3; i < 3 + lightButtons.size(); i++) {
+            if (Math.abs(topRects[i].centerY() - y) < Math.abs(topRects[best].centerY() - y)) best = i;
+        }
+        return best;
     }
 
     private boolean moveLight(int dx, int dy) {
         switch (zone) {
             case Z_SHELF:
+                // Right from the last app: into the column of round buttons (the nearest one, which is the lowest).
+                if (dx > 0 && !shelf.isEmpty() && shelfIndex >= shelf.size() - 1 && !lightButtons.isEmpty()) {
+                    zone = Z_TOP;
+                    topIndex = nearestButton(tileRects[shelfIndex].centerY());
+                    break;
+                }
                 // Up from an empty shelf too: move()'s older zones (the hero, the corner capsule) aren't drawn any more.
                 if (dy >= 0) return false;
                 if (cards.isEmpty() && camerasShown() && cameras.count() == 0) {
@@ -3222,6 +3248,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             case Z_CARDS:
                 if (dx != 0) {
                     int next = Math.max(0, Math.min(cards.size() - 1, cardIndex + dx));
+                    if (next == cardIndex && dx > 0 && !lightButtons.isEmpty()) {
+                        zone = Z_TOP;   // right from the last card: into the column of round buttons
+                        topIndex = nearestButton(cardRects[cardIndex].centerY());
+                        break;
+                    }
                     if (next == cardIndex) return true;
                     cardIndex = next;
                 } else if (dy < 0) {
@@ -3233,6 +3264,30 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 }
                 break;
             case Z_TOP:
+                if (topIndex >= 3) {
+                    // The column of round buttons: up and down walk it; left goes back to the content.
+                    if (dy != 0) {
+                        int next = Math.max(3, Math.min(2 + lightButtons.size(), topIndex + dy));
+                        if (next == topIndex) return true;
+                        topIndex = next;
+                    } else if (dx < 0) {
+                        if (!cards.isEmpty()) {
+                            zone = Z_CARDS;
+                            cardIndex = cards.size() - 1;
+                        } else if (camerasShown() && cameras.count() > 0) {
+                            zone = Z_CAMS;
+                            camIndex = Math.min(cameras.count() - 1, cameras.columns() - 1);
+                        } else if (!shelf.isEmpty()) {
+                            zone = Z_SHELF;
+                            shelfIndex = shelf.size() - 1;
+                        } else {
+                            return true;
+                        }
+                    } else {
+                        return true;
+                    }
+                    break;
+                }
                 if (dx != 0) {
                     int next = Math.max(picksOn() ? 0 : 3, Math.min(2 + lightButtons.size(), topIndex + dx));
                     if (next == topIndex) return true;
@@ -3251,8 +3306,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                         zone = Z_CARDS;
                         cardIndex = nearest(cardRects, cards.size(), topRects[topIndex].centerX());
                     }
-                } else if (topIndex < 3 && !lightButtons.isEmpty()) {
-                    topIndex = 3;   // up from the tabs reaches the corner buttons without walking the row
                 } else {
                     return true;
                 }
@@ -3260,7 +3313,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             case Z_CAMS: {
                 // The grid: across a row, then up to the 4-or-6 choice (or the corner buttons) or down to the shelf.
                 int n = cameras.count(), cols = cameras.columns(), col = camIndex % cols, next = camIndex;
-                if (dx != 0) next = col + dx >= 0 && col + dx < cols ? camIndex + dx : camIndex;
+                if (dx > 0 && (col == cols - 1 || camIndex == n - 1) && !lightButtons.isEmpty()) {
+                    zone = Z_TOP;
+                    topIndex = nearestButton(cameras.getTop() + cameras.getHeight() / 2f);
+                } else if (dx != 0) next = col + dx >= 0 && col + dx < cols ? camIndex + dx : camIndex;
                 else if (dy < 0 && camIndex >= cols) next = camIndex - cols;
                 else if (dy > 0 && camIndex + cols < n) next = camIndex + cols;
                 else if (dy < 0 && cameras.hasChoice()) {
@@ -3283,6 +3339,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             case Z_CAMGRID:
                 if (dx != 0) {
                     int next = Math.max(0, Math.min(cameras.choices() - 1, camChoice + dx));
+                    if (next == camChoice && dx > 0 && !lightButtons.isEmpty()) {
+                        zone = Z_TOP;   // right from the last choice: into the column of round buttons
+                        topIndex = 3;
+                        break;
+                    }
                     if (next == camChoice) return true;
                     camChoice = next;
                 } else if (dy < 0) {
